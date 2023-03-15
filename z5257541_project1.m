@@ -1,5 +1,5 @@
 function main()
-    file = '.\DataUsr_002.mat';
+    file = '.\DataUsr_007b.mat';
     load(file); 
     extract(data);
 end
@@ -415,7 +415,7 @@ function h = initPolarPlots()
     axis([-75, 75, 0, 20]); 
     grid on;
     hold on;  
-    h2b = plot(nan, nan, 'r+');
-    h2c = plot(nan, nan, 'g*');
+    h2b = plot(nan, nan, 'g*');
+    h2c = plot(nan, nan, 'r+');
     h = [h1, h1b, h1c, h2, h2b, h2c];
 end
