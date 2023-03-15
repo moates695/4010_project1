@@ -55,7 +55,8 @@ function extract(data)
                 subsample_index(end + 1) = i;
                 plotEstimatedX(X);
                 
-                lidarToGlobalCF(X, localCentres, scan1, scan2, data);
+                ground = data.verify.poseL;
+                lidarToGlobalCF(ground(:,length(subsample_index)), localCentres, scan1, scan2, data);
 
                 pause(0.05);
                 continue;            
@@ -216,12 +217,12 @@ end
 
 function [centresGF] = lidarToGlobalCF(X, centres, scan1, scan2, data)
     centresGF = {};
-    L1x = data.LidarsCfg.Lidar1.Lx;
-    L1y = data.LidarsCfg.Lidar1.Ly;
+    L1x = data.LidarsCfg.Lidar1.Ly;
+    L1y = data.LidarsCfg.Lidar1.Lx;
     beta1 = data.LidarsCfg.Lidar1.Alpha;
 
-    L2x = data.LidarsCfg.Lidar2.Lx;
-    L2y = data.LidarsCfg.Lidar2.Ly;
+    L2x = data.LidarsCfg.Lidar2.Ly;
+    L2y = data.LidarsCfg.Lidar2.Lx;
     beta2 = data.LidarsCfg.Lidar2.Alpha;
     
     mask = 16383;
