@@ -46,8 +46,8 @@ function extract(data)
                 scan1 = data.scans(:, index);  
                 scan2 = data.scans2(:, index);
 
-                [ranges1, intensity_idx1] = cleanScan(scan1);
-                [ranges2, intensity_idx2] = cleanScan(scan2);
+                [ranges1, intensity_idx1] = getScan(scan1);
+                [ranges2, intensity_idx2] = getScan(scan2);
 
                 [t1, localCentres] = processLiDAR(hh(1:3), X, ranges1, intensity_idx1, Lidar1Cfg);
                 centresLidar1CF{end+1} = localCentres;
@@ -56,12 +56,11 @@ function extract(data)
                 lidar2Times(end+1) = t2;
 
                 subsample_index(end + 1) = i;
-                %plotEstimatedX(X);
                 
-                %lidarToGlobalCF(X, localCentres, ranges1, ranges2, data);
                 [centresGlobal, scan1Global, scan2Global] = lidarToGlobalCF(X, localCentres, ranges1, ranges2, data);
+                
                 prevPlotRefs = plotData(prevPlotRefs, X, centresGlobal, scan1Global, scan2Global);
-                %pause(0.05);
+                pause(0.05);
                 continue;            
             case 2 % speed and gyros
                 fprintf('DR: dt=%.1f ms, v=%.2f m/s, w=%.2f deg/sec\n', dt*1000, vw.*[1;180/pi]);
@@ -86,7 +85,13 @@ end
 % ---------------------------------------------------------------------------------
 
 function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg)
-    set(h(1),'ydata', ranges);
+    tempRanges = ranges;
+    for i = 1:length(ranges)
+        if tempRanges(i) == 0
+            tempRanges(i) = nan;
+        end
+    end
+    set(h(1),'ydata', tempRanges);
     fov = [-75:0.5:75]';
     set(h(2), 'xdata', fov(intensity_idx), 'ydata', ranges(intensity_idx));
     
@@ -130,27 +135,12 @@ function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg)
                 curr_n = next_n;
             end
         end
-         if ~largeSegment
-            if curr_m + 2 <= curr_n
-                j = floor((curr_m + curr_n) / 2);
-                [xm, ym] = indexRangeToCartesian(curr_m, ranges);
-                [xn, yn] = indexRangeToCartesian(curr_n, ranges);
-                [xj, yj] = indexRangeToCartesian(j, ranges);
-
-                xc = ((xm^2+ym^2-xj^2-yj^2)*(yn-ym)-(xm^2+ym^2-xn^2-yn^2)*(yj-ym))/(2*((xn-xm)*(yj-ym)-(xj-xm)*(yn-ym)));
-                yc = -1/(2*(yn-ym))*(2*xc*(xn-xm)+xm^2+ym^2-xn^2-yn^2);
-                
-                cartesianCentres{end+1} = [xc, yc];
-                [rc, idc] = cartesianToPolarIndex(xc, yc);
-                polarCentres{end+1} = [rc, idc];
-            else
-                rc = (ranges(curr_m) + ranges(curr_n)) / 2;
-                idc = (curr_m + curr_n) / 2;
-                
-                polarCentres{end+1} = [rc, idc];
-                [xc, yc] = indexRadiusToCartesian(idc, rc);
-                cartesianCentres{end+1} = [xc, yc];
-            end
+         if ~largeSegment         
+            rc = (ranges(curr_m) + ranges(curr_n)) / 2;
+            idc = (curr_m + curr_n) / 2;
+            polarCentres{end+1} = [rc, idc];
+            [xc, yc] = indexRadiusToCartesian(idc, rc);
+            cartesianCentres{end+1} = [xc, yc];
             indexRange = curr_m : 0.5 : curr_n;
             for j = 1:length(indexRange)
                 if ~ismember(indexRange(j), alreadyFound)
@@ -223,11 +213,6 @@ function [centresGF, global1, global2] = lidarToGlobalCF(X, centres, ranges1, ra
         yl = centre(2);
         pg = lidarToGlobal([xl; yl], alpha, beta1, [X(1); X(2)], [L1x; L1y]);
         centresGF{end+1} = pg;
-
-        %figure(11)
-        %hold on;
-        %legend('AutoUpdate','off')
-        %plot(pg(1), pg(2), 'r+')
     end
 
     global1 = zeros(2, length(ranges1));
@@ -240,12 +225,6 @@ function [centresGF, global1, global2] = lidarToGlobalCF(X, centres, ranges1, ra
         global1(:,i) = [pg1(1) pg1(2)];
         global2(:,i) = [pg2(1) pg2(2)];
     end
-
-    %figure(11)
-    %hold on;
-    %legend('AutoUpdate','off')
-    %plot(global1(1,:), global1(2,:), 'c.')
-    %plot(global2(1,:), global2(2,:), 'y.')
 end
 
 function r = rotation(a)
@@ -256,25 +235,14 @@ function pg = lidarToGlobal(pl, alpha, beta, T1, T2)
     pg = rotation(alpha) * (rotation(beta) * pl + T2) + T1;
 end
 
-function [ranges, intensity_idx] = cleanScan(scan)
+function [ranges, intensity_idx] = getScan(scan)
     mask1 = 16383;
     ranges = bitand(scan, mask1);
     ranges = single(ranges) * 0.01;
-    for i = 1:length(ranges)
-        if ranges(i) == 0
-            ranges(i) = nan;
-        end
-    end
 
     mask2 = 49152;
     intensity = bitand(scan, mask2);
-    temp_idx = find(intensity > 0);
-    intensity_idx = [];
-    for i = 1:length(temp_idx)
-        if ~isnan(ranges(temp_idx(i)))
-            intensity_idx(end+1) = temp_idx(i);
-        end
-    end
+    intensity_idx = find(intensity > 0);
 end
 
 % -------------------------------------------------------------------------
@@ -355,11 +323,14 @@ end
 function plotOOI(h, polarCentres)
     ranges = [];
     angleIndex = [];
+    %disp(polarCentres);
     for i = 1:length(polarCentres)
         idx = polarCentres{i};
         ranges(end+1) = idx(1);
         angleIndex(end+1) = indexToAngle(idx(2));
     end
+    disp(ranges);
+    disp(angleIndex);
     set(h(3), 'xdata', angleIndex, 'ydata', ranges);
 end
 
@@ -376,6 +347,14 @@ function prev = plotData(prev, X, centresGlobal, scan1Global, scan2Global)
     for i = 1:length(centresGlobal)
         centre = centresGlobal{i};
         prev(end+1) = plot(centre(1), centre(2), 'r+');
+    end
+    for i = 1:length(scan1Global)
+        if scan1Global(1,i) < -3 || scan1Global(1,i) > 19 || scan1Global(2,i) < -4 || scan1Global(2,i) > 18
+            scan1Global(:,i) = nan;
+        end
+        if scan2Global(1,i) < -3 || scan2Global(1,i) > 19 || scan2Global(2,i) < -4 || scan2Global(2,i) > 18
+            scan2Global(:,i) = nan;
+        end
     end
     prev(end+1) = plot(scan1Global(1,:), scan1Global(2,:), 'c.');
     prev(end+1) = plot(scan2Global(1,:), scan2Global(2,:), 'y.');
@@ -400,7 +379,7 @@ function hh=initPlots(data)
     %p = data.verify.poseL;
     %plot(p(1,:), p(2,:), 'r.');
     
-    plot(p0(1), p0(2),'b.');
+    plot(nan, nan,'b.');
     plot(nan, nan,'r+');
     plot(nan, nan, 'c.');
     plot(nan, nan, 'y.');
