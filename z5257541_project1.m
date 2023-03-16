@@ -1,5 +1,5 @@
 function main()
-    file = '.\DataUsr_007b.mat';
+    file = '.\DataUsr_002.mat';
     load(file); 
     extract(data);
 end
@@ -60,7 +60,7 @@ function extract(data)
                 [centresGlobal, scan1Global, scan2Global] = lidarToGlobalCF(X, localCentres, ranges1, ranges2, data);
                 
                 prevPlotRefs = plotData(prevPlotRefs, X, centresGlobal, scan1Global, scan2Global);
-                pause(0.05);
+                %pause(0.05);
                 continue;            
             case 2 % speed and gyros
                 fprintf('DR: dt=%.1f ms, v=%.2f m/s, w=%.2f deg/sec\n', dt*1000, vw.*[1;180/pi]);
@@ -284,7 +284,7 @@ function plotDifferences(data, X_buf, subsample_index)
 
     figure(12)
     subplot(211)
-    plot(t, pose_diff*100);
+    plot(t, pose_diff * 100);
     title("Pose difference");
     xlabel('LiDAR event');
     ylabel('difference (cm)');
@@ -294,6 +294,21 @@ function plotDifferences(data, X_buf, subsample_index)
     title("Heading difference");
     xlabel('LiDAR event');
     ylabel('difference (deg)');
+    
+    maxPoseDiff = max(pose_diff) * 100;
+    fprintf("Maximum pose difference: %.2f m\n", maxPoseDiff);
+
+    maxHeadingDiff1 = max(heading_diff);
+    maxHeadingDiff2 = abs(min(heading_diff));
+    if maxHeadingDiff1 > maxHeadingDiff2
+        maxHeadingDiff = maxHeadingDiff1;
+        direction = "CCW";
+    else 
+        maxHeadingDiff = maxHeadingDiff2;
+        direction = "CW";
+    end
+
+    fprintf("Max heading difference: %.2f deg %\n", maxHeadingDiff, direction);
 end
 
 function plotLidarTimes(times1, times2, nLidarEvents)
@@ -318,6 +333,12 @@ function plotLidarTimes(times1, times2, nLidarEvents)
     hold on;
     yline(avg2, '--', 'color', 'r');
     legend({'processing time', 'average time'})
+
+    avg1 = sum(times1) / length(times1);
+    avg2 = sum(times2) / length(times2);
+
+    fprintf("Average processing time LiDAR#1: %.2f ms\n", avg1);
+    fprintf("Average processing time LiDAR#2: %.2f ms\n", avg2);
 end
 
 function plotOOI(h, polarCentres)
@@ -329,8 +350,8 @@ function plotOOI(h, polarCentres)
         ranges(end+1) = idx(1);
         angleIndex(end+1) = indexToAngle(idx(2));
     end
-    disp(ranges);
-    disp(angleIndex);
+    %disp(ranges);
+    %disp(angleIndex);
     set(h(3), 'xdata', angleIndex, 'ydata', ranges);
 end
 
@@ -344,20 +365,22 @@ function prev = plotData(prev, X, centresGlobal, scan1Global, scan2Global)
     prev = [];
     %plotRef1 = plotEstimatedX(X);
     prev(end+1) = plot(X(1), X(2), 'b.');
-    for i = 1:length(centresGlobal)
-        centre = centresGlobal{i};
-        prev(end+1) = plot(centre(1), centre(2), 'r+');
-    end
+    
     for i = 1:length(scan1Global)
         if scan1Global(1,i) < -3 || scan1Global(1,i) > 19 || scan1Global(2,i) < -4 || scan1Global(2,i) > 18
-            scan1Global(:,i) = nan;
+            %scan1Global(:,i) = nan;
         end
         if scan2Global(1,i) < -3 || scan2Global(1,i) > 19 || scan2Global(2,i) < -4 || scan2Global(2,i) > 18
-            scan2Global(:,i) = nan;
+            %scan2Global(:,i) = nan;
         end
     end
     prev(end+1) = plot(scan1Global(1,:), scan1Global(2,:), 'c.');
     prev(end+1) = plot(scan2Global(1,:), scan2Global(2,:), 'y.');
+
+    for i = 1:length(centresGlobal)
+        centre = centresGlobal{i};
+        prev(end+1) = plot(centre(1), centre(2), 'r+');
+    end
 end
 
 function hh=initPlots(data)
