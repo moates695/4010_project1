@@ -1,5 +1,5 @@
 function main()
-    file = '.\DataUsr_002.mat';
+    file = '.\DataUsr_007b.mat';
     load(file); 
     extract(data);
 end
@@ -318,6 +318,12 @@ function plotLidarTimes(times1, times2, nLidarEvents)
     hold on;
     yline(avg2, '--', 'color', 'r');
     legend({'processing time', 'average time'})
+
+    avg1 = sum(times1) / length(times1);
+    avg2 = sum(times2) / length(times2);
+
+    fprintf("Average processing time Li");
+    fprintf("")
 end
 
 function plotOOI(h, polarCentres)
@@ -350,7 +356,14 @@ function prev = plotData(prev, X, centresGlobal, scan1Global, scan2Global)
     end
     for i = 1:length(scan1Global)
         if scan1Global(1,i) < -3 || scan1Global(1,i) > 19 || scan1Global(2,i) < -4 || scan1Global(2,i) > 18
+<<<<<<< HEAD
         
+=======
+            %scan1Global(:,i) = nan;
+        end
+        if scan2Global(1,i) < -3 || scan2Global(1,i) > 19 || scan2Global(2,i) < -4 || scan2Global(2,i) > 18
+            %scan2Global(:,i) = nan;
+>>>>>>> 28006b1288a1436b9fd6de7da04629361a67d21f
         end
     end
     prev(end+1) = plot(scan1Global(1,:), scan1Global(2,:), 'c.');
@@ -412,7 +425,12 @@ function h = initPolarPlots()
     axis([-75, 75, 0, 20]); 
     grid on;
     hold on;  
+<<<<<<< HEAD
     h2b = plot(nan, nan, 'r+');
     h2c = plot(nan, nan, 'g*');
+=======
+    h2b = plot(nan, nan, 'g*');
+    h2c = plot(nan, nan, 'r+');
+>>>>>>> 28006b1288a1436b9fd6de7da04629361a67d21f
     h = [h1, h1b, h1c, h2, h2b, h2c];
 end
