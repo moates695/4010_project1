@@ -23,6 +23,9 @@ function extract(data)
     lidar1Times = [];
     lidar2Times = [];
 
+    centresLidar1CF = {};
+    centresGlobal = {};
+    prevPlotRefs = [];
     disp('Begin sampling events');
     for i = 1:data.n
         X_buf(:,i) = X;        
@@ -33,7 +36,7 @@ function extract(data)
         t_last = 0.0001 * double(event(1));
        
         X = kinematicModel(X, vw, dt);    
-        
+
         index = event(2);
         sensorID = event(3);
 
@@ -41,17 +44,22 @@ function extract(data)
             case 1 % Lidar scan
                 fprintf('LiDAR: dt=%.1f ms @ t=%.3f\n', dt*1000, t_curr);             
                 scan1 = data.scans(:, index);  
-                scan2 = data.scans2(:, index);  
-                
-                % do something with the data.
-                
-                [t1] = processLiDAR(hh(1:3), X, scan1, Lidar1Cfg);
-                [t2] = processLiDAR(hh(4:6), X, scan2, Lidar2Cfg);
+                scan2 = data.scans2(:, index);
+
+                [ranges1, intensity_idx1] = getScan(scan1);
+                [ranges2, intensity_idx2] = getScan(scan2);
+
+                [t1, localCentres] = processLiDAR(hh(1:3), X, ranges1, intensity_idx1, Lidar1Cfg);
+                centresLidar1CF{end+1} = localCentres;
+                [t2, ~] = processLiDAR(hh(4:6), X, ranges2, intensity_idx2, Lidar2Cfg);
                 lidar1Times(end+1) = t1;
                 lidar2Times(end+1) = t2;
 
                 subsample_index(end + 1) = i;
-                plotEstimatedX(X)
+                
+                [centresGlobal, scan1Global, scan2Global] = lidarToGlobalCF(X, localCentres, ranges1, ranges2, data);
+                
+                prevPlotRefs = plotData(prevPlotRefs, X, centresGlobal, scan1Global, scan2Global);
                 pause(0.05);
                 continue;            
             case 2 % speed and gyros
@@ -63,7 +71,6 @@ function extract(data)
         end
     end
     disp('End sampling events');
-    %plotEstimated(X_buf, subsample_index);
     plotDifferences(data, X_buf, subsample_index);
     plotLidarTimes(lidar1Times, lidar2Times, length(subsample_index));
 end
@@ -77,24 +84,28 @@ end
 
 % ---------------------------------------------------------------------------------
 
-function [t] = processLiDAR(h, X, scan, cfg)
-    mask1 = 16383;
-    ranges = bitand(scan, mask1);
-    ranges = single(ranges)*0.01 ;
-    set(h(1),'ydata', ranges);
-
-    mask2 = 49152;
-    intensity = bitand(scan,mask2);
-    intensity_idx = find(intensity > 0);   
+function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg)
+    tempRanges = ranges;
+    for i = 1:length(ranges)
+        if tempRanges(i) == 0
+            tempRanges(i) = nan;
+        end
+    end
+    set(h(1),'ydata', tempRanges);
     fov = [-75:0.5:75]';
     set(h(2), 'xdata', fov(intensity_idx), 'ydata', ranges(intensity_idx));
     
     tic();
     cartesianCentres = {};
     polarCentres = {};
+    alreadyFound = [];
     for i = 1:length(intensity_idx)
-        %disp("start");
-        %disp(intensity_idx(i));
+        if ranges(i) == 0
+            continue
+        end
+        if ismember(intensity_idx(i), alreadyFound)
+            continue
+        end
         curr_m = intensity_idx(i); curr_n = intensity_idx(i);
         next_m = curr_m;
         next_n = curr_n;
@@ -107,21 +118,14 @@ function [t] = processLiDAR(h, X, scan, cfg)
                 next_n = curr_n + 1;
             end            
 
-            %if distanceBetween(next_m, curr_m, ranges) > 0.1 && distanceBetween(next_n, curr_n, ranges) > 0.1
-                %largeSegment = true;
-            %end
-            disp(distanceBetween(next_m, curr_n, ranges));
             if distanceBetween(next_m, curr_n, ranges) > 0.2 || distanceBetween(next_m, curr_m, ranges) > 0.1
                 next_m = curr_m;
             end
-            disp(distanceBetween(next_n, next_m, ranges));
             if distanceBetween(next_n, next_m, ranges) > 0.2 || distanceBetween(next_n, curr_n, ranges) > 0.1
                 next_n = curr_n;
             end
 
             if curr_m == next_m && curr_n == next_n
-                disp(curr_m);
-                disp(curr_n);
                 if distanceBetween(next_m, curr_m, ranges) > 0.1 || distanceBetween(next_n, curr_n, ranges) > 0.1
                     largeSegment = true;
                 end
@@ -131,30 +135,22 @@ function [t] = processLiDAR(h, X, scan, cfg)
                 curr_n = next_n;
             end
         end
-        %if ~largeSegment && next_m ~= intensity_idx(i) && next_n ~= intensity_idx(i)
-         if ~largeSegment
-            %j = floor((next_m + next_n) / 2);
-            %[xm, ym] = polarToCartesian(next_m, ranges);
-            %[xn, yn] = polarToCartesian(next_n, ranges);
-            %[xj, yj] = polarToCartesian(j, ranges);
-            %yc = ((xj-xm)*(xn^2-xm^2+yn^2-ym^2)-(xn-xm)*(xj^2-xm^2+yj^2-ym^2))/(2*((xj-xm)*(yn-ym)-(xn-xm)*(yj-xm)));
-            %xc = (xn^2-xm^2+yn^2-ym^2-2*yc*(yn-ym))/(2*(xn-xm));
-            %centres(end+1) = {[xc, yc]};
-            %[r, ang] = cartesianToPolar(xc, yc);
-            %polarCentres(end+1) = {[r, ang]};
+         if ~largeSegment         
             rc = (ranges(curr_m) + ranges(curr_n)) / 2;
             idc = (curr_m + curr_n) / 2;
-            polarCentres(end+1) = {[rc, idc]};
+            polarCentres{end+1} = [rc, idc];
             [xc, yc] = indexRadiusToCartesian(idc, rc);
-            cartesianCentres(end+1) = {[xc, yc]};
+            cartesianCentres{end+1} = [xc, yc];
+            indexRange = curr_m : 0.5 : curr_n;
+            for j = 1:length(indexRange)
+                if ~ismember(indexRange(j), alreadyFound)
+                    alreadyFound(end+1) = indexRange(j);
+                end
+            end
         end
     end
     t = toc()*1000;
-    %disp(length(centres))
-    %disp(centres);
-    %disp(polarCentres);
     plotOOI(h, polarCentres);
-    %disp(polarCentres);
 end
 
 function d = distanceBetween(a, b, ranges)
@@ -164,27 +160,32 @@ function d = distanceBetween(a, b, ranges)
     d = sqrt(ra^2 + rb^2 - 2*ra*rb*cosd(ang));
 end
 
-function ang = angleBetween(a, b)
+function ang = angleBetweenAbs(a, b)
     ang = abs(a - b) * 0.5;
+end
+
+function ang = angleBetween(a, b)
+    ang = (a - b) * 0.5;
 end
 
 function [x, y] = indexRangeToCartesian(i, ranges)
     zero = 151;
     ang = angleBetween(i, zero);
-    x = ranges(i) * sind(ang);
+    x = ranges(i) * -sind(ang);
     y = ranges(i) * cosd(ang);
 end
 
 function [x, y] = indexRadiusToCartesian(i, radius)
     zero = 151;
     ang = angleBetween(i, zero);
-    x = radius * sind(ang);
+    x = radius * -sind(ang);
     y = radius * cosd(ang);
 end
 
-function [r, ang] = cartesianToPolar(x, y)
+function [r, angIndex] = cartesianToPolarIndex(x, y)
     r = sqrt(x^2 + y^2);
-    ang = asind(x/r);
+    ang = -atand(x/y);
+    angIndex = angleToIndex(ang);
 end
 
 function ang = indexToAngle(i)
@@ -192,16 +193,65 @@ function ang = indexToAngle(i)
 end
 
 function i = angleToIndex(ang)
-    i = round(2 * ang + 151);
+    i = round(2 * ang + 151); 
+end
+
+function [centresGF, global1, global2] = lidarToGlobalCF(X, centres, ranges1, ranges2, data)
+    centresGF = {};
+    L1x = data.LidarsCfg.Lidar1.Ly;
+    L1y = data.LidarsCfg.Lidar1.Lx;
+    beta1 = data.LidarsCfg.Lidar1.Alpha;
+
+    L2x = data.LidarsCfg.Lidar2.Ly;
+    L2y = data.LidarsCfg.Lidar2.Lx;
+    beta2 = data.LidarsCfg.Lidar2.Alpha;
+    
+    alpha = X(3) - pi/2;
+    for i = 1:length(centres)
+        centre = centres{i};
+        xl = centre(1);
+        yl = centre(2);
+        pg = lidarToGlobal([xl; yl], alpha, beta1, [X(1); X(2)], [L1x; L1y]);
+        centresGF{end+1} = pg;
+    end
+
+    global1 = zeros(2, length(ranges1));
+    global2 = zeros(2, length(ranges2));
+    for i = 1:length(ranges1)
+        [xl1, yl1] = indexRangeToCartesian(i, ranges1);
+        [xl2, yl2] = indexRangeToCartesian(i, ranges2);
+        pg1 = lidarToGlobal([xl1; yl1], alpha, beta1, [X(1); X(2)], [L1x; L1y]);
+        pg2 = lidarToGlobal([xl2; yl2], alpha, beta2, [X(1); X(2)], [L2x; L2y]);
+        global1(:,i) = [pg1(1) pg1(2)];
+        global2(:,i) = [pg2(1) pg2(2)];
+    end
+end
+
+function r = rotation(a)
+    r = [cos(a) -sin(a); sin(a) cos(a)];
+end
+
+function pg = lidarToGlobal(pl, alpha, beta, T1, T2)
+    pg = rotation(alpha) * (rotation(beta) * pl + T2) + T1;
+end
+
+function [ranges, intensity_idx] = getScan(scan)
+    mask1 = 16383;
+    ranges = bitand(scan, mask1);
+    ranges = single(ranges) * 0.01;
+
+    mask2 = 49152;
+    intensity = bitand(scan, mask2);
+    intensity_idx = find(intensity > 0);
 end
 
 % -------------------------------------------------------------------------
 
-function plotEstimatedX(X)
+function plotRef = plotEstimatedX(X)
     figure(11)
     hold on;
     legend('AutoUpdate','off')
-    plot(X(1), X(2), 'b.')
+    plotRef = plot(X(1), X(2), 'b.');
 end
 
 function plotDifferences(data, X_buf, subsample_index)
@@ -214,6 +264,10 @@ function plotDifferences(data, X_buf, subsample_index)
     x_diff = abs(ground(1,:) - X_subsample(1,:));
     y_diff = abs(ground(2,:) - X_subsample(2,:));
     
+    groundPose = sqrt(ground(1,:).^2 + ground(2,:).^2);
+    pose = sqrt(X_subsample(1,:).^2 + X_subsample(2,:).^2);
+    pose_diff = abs(groundPose - pose);
+
     heading_diff = (X_subsample(3,:) - ground(3,:))*180/pi;
     for i = 1:length(heading_diff)
         if abs(heading_diff(i)) > 180
@@ -229,21 +283,15 @@ function plotDifferences(data, X_buf, subsample_index)
     t = 1 : length(subsample_index);
 
     figure(12)
-    subplot(311)
-    plot(t, x_diff*100);
-    title("X pose difference");
+    subplot(211)
+    plot(t, pose_diff*100);
+    title("Pose difference");
     xlabel('LiDAR event');
     ylabel('difference (cm)');
 
-    subplot(312)
-    plot(t, y_diff*100);
-    title("Y pose difference");
-    xlabel('LiDAR event');
-    ylabel('difference (cm)');
-    
-    subplot(313)
+    subplot(212)
     plot(t, heading_diff);
-    title("Heading pose difference");
+    title("Heading difference");
     xlabel('LiDAR event');
     ylabel('difference (deg)');
 end
@@ -273,24 +321,40 @@ function plotLidarTimes(times1, times2, nLidarEvents)
 end
 
 function plotOOI(h, polarCentres)
-    %if isempty(polarCentres)
-        %return
-    %end
     ranges = [];
     angleIndex = [];
+    %disp(polarCentres);
     for i = 1:length(polarCentres)
         idx = polarCentres{i};
-        %disp(size(idx));
-        %disp(idx);
         ranges(end+1) = idx(1);
         angleIndex(end+1) = indexToAngle(idx(2));
     end
-    %set(h(2), 'xdata', fov(intensity_idx), 'ydata', ranges(intensity_idx));    
-    %disp(angles)
-    %disp(ranges)
-    %disp(ranges);
-    %disp(angleIndex);
+    disp(ranges);
+    disp(angleIndex);
     set(h(3), 'xdata', angleIndex, 'ydata', ranges);
+end
+
+function prev = plotData(prev, X, centresGlobal, scan1Global, scan2Global)
+    figure(11);
+    hold on;
+    legend('AutoUpdate','off')
+    for i = 1:length(prev)
+        delete(prev(i));
+    end
+    prev = [];
+    %plotRef1 = plotEstimatedX(X);
+    prev(end+1) = plot(X(1), X(2), 'b.');
+    for i = 1:length(centresGlobal)
+        centre = centresGlobal{i};
+        prev(end+1) = plot(centre(1), centre(2), 'r+');
+    end
+    for i = 1:length(scan1Global)
+        if scan1Global(1,i) < -3 || scan1Global(1,i) > 19 || scan1Global(2,i) < -4 || scan1Global(2,i) > 18
+        
+        end
+    end
+    prev(end+1) = plot(scan1Global(1,:), scan1Global(2,:), 'c.');
+    prev(end+1) = plot(scan2Global(1,:), scan2Global(2,:), 'y.');
 end
 
 function hh=initPlots(data)
@@ -309,27 +373,23 @@ function hh=initPlots(data)
     p0=data.pose0;
     plot(p0(1),p0(2),'r*','markersize',10);
     
-    p = data.verify.poseL;
-    plot(p(1,:), p(2,:), 'r.');
+    %p = data.verify.poseL;
+    %plot(p(1,:), p(2,:), 'r.');
     
-    plot(p0(1), p0(2),'b.');
-    legend({'landmarks','walls (middle planes)','initial position', 'ground truth', 'estimated position'});
+    plot(nan, nan,'b.');
+    plot(nan, nan,'r+');
+    plot(nan, nan, 'c.');
+    plot(nan, nan, 'y.');
+    legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'OOI centre estimate', 'LiDAR#1 scan', 'LiDAR#2 scan'});
     
     hh = initPolarPlots();
 end
 
 function h = initPolarPlots()
-    
-    %I create some figures in which to show some animations (e.g. LiDAR
-    %scans in native polar representation)
-
     figure(10); clf();
-    fov = [-75:0.5:75];  % LiDAR's FoV  ( -75 to +75 degrees), discretized by angular resolution (0.5 deg).
-    r=fov*0;   % same number of ranges  ( i.e. 301 )
+    fov = [-75:0.5:75];
+    r=fov*0;
     
-    % create figures, and graphic objects for showing, later, data dynamically.
-    % I decided to use subfigures ("subplot") (just cosmetic details, you
-    % decide your style.)
     subplot(211);  
     h1 = plot(fov, r, '.b');
     title('LiDAR1(shown in Polar)');  
@@ -338,10 +398,9 @@ function h = initPolarPlots()
     axis([-75, 75, 0, 20]); 
     grid on;
     hold on;  
-    h1b = plot(0, 0, 'r+');
-    %legend({'opaque pixels','brilliant pixels'});
+    h1b = plot(nan, nan, 'g*');
     hold on;
-    h1c = plot(0, 0, 'g*');
+    h1c = plot(nan, nan, 'r+');
     legend({'opaque pixels','brilliant pixels', 'OOI centers'});
         
     
@@ -353,7 +412,7 @@ function h = initPolarPlots()
     axis([-75, 75, 0, 20]); 
     grid on;
     hold on;  
-    h2b = plot(0, 0, 'r+');
-    h2c = plot(0, 0, 'g*');
+    h2b = plot(nan, nan, 'r+');
+    h2c = plot(nan, nan, 'g*');
     h = [h1, h1b, h1c, h2, h2b, h2c];
 end
