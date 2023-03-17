@@ -1,5 +1,5 @@
 function main()
-    file = '.\DataUsr_002.mat';
+    file = '.\DataUsr_007b.mat';
     load(file); 
     extract(data);
 end
@@ -49,9 +49,9 @@ function extract(data)
                 [ranges1, intensity_idx1] = getScan(scan1);
                 [ranges2, intensity_idx2] = getScan(scan2);
 
-                [t1, localCentres] = processLiDAR(hh(1:3), X, ranges1, intensity_idx1, Lidar1Cfg);
+                [t1, localCentres] = processLiDAR(hh(1:3), X, ranges1, intensity_idx1, Lidar1Cfg, false);
                 centresLidar1CF{end+1} = localCentres;
-                [t2, ~] = processLiDAR(hh(4:6), X, ranges2, intensity_idx2, Lidar2Cfg);
+                [t2, ~] = processLiDAR(hh(4:6), X, ranges2, intensity_idx2, Lidar2Cfg, true);
                 lidar1Times(end+1) = t1;
                 lidar2Times(end+1) = t2;
 
@@ -60,6 +60,7 @@ function extract(data)
                 [centresGlobal, scan1Global, scan2Global] = lidarToGlobalCF(X, localCentres, ranges1, ranges2, data);
                 
                 prevPlotRefs = plotData(prevPlotRefs, X, centresGlobal, scan1Global, scan2Global);
+                plotOOILocal(hh(7:10), ranges1, localCentres, intensity_idx1);
                 %pause(0.05);
                 continue;            
             case 2 % speed and gyros
@@ -84,7 +85,7 @@ end
 
 % ---------------------------------------------------------------------------------
 
-function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg)
+function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg, isLidar2)
     tempRanges = ranges;
     for i = 1:length(ranges)
         if tempRanges(i) == 0
@@ -92,6 +93,13 @@ function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg)
         end
     end
     set(h(1),'ydata', tempRanges);
+    
+    if isLidar2
+        t = 0;
+        cartesianCentres = [];
+        return
+    end
+    
     fov = [-75:0.5:75]';
     set(h(2), 'xdata', fov(intensity_idx), 'ydata', ranges(intensity_idx));
     
@@ -151,6 +159,7 @@ function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg)
     end
     t = toc()*1000;
     plotOOI(h, polarCentres);
+    %plotOOILocal(polarCentres);
 end
 
 function d = distanceBetween(a, b, ranges)
@@ -383,6 +392,26 @@ function prev = plotData(prev, X, centresGlobal, scan1Global, scan2Global)
     end
 end
 
+function plotOOILocal(h, ranges, localCentres, intensity_idx)
+    cartesian = zeros(2, length(ranges));
+    for i = 1:length(ranges)
+        [x, y] = indexRangeToCartesian(i, ranges);
+        cartesian(:, i) = [x; y];
+    end
+    set(h(2), 'xdata', cartesian(1,:), 'ydata', cartesian(2,:));
+    intensityCartesian = zeros(2, length(intensity_idx));
+    for i = 1:length(intensity_idx)
+        intensityCartesian(:, i) = cartesian(:, intensity_idx(i));
+    end
+    set(h(3), 'xdata', intensityCartesian(1,:), 'ydata', intensityCartesian(2,:));
+    
+    centres = zeros(2, length(localCentres));
+    for i = 1:length(localCentres)
+        centres(:,i) = localCentres{i};
+    end
+    set(h(4), 'xdata', centres(1,:), 'ydata', centres(2,:));
+end
+
 function hh=initPlots(data)
     figure(11); clf();
     
@@ -407,7 +436,8 @@ function hh=initPlots(data)
     plot(nan, nan, 'c.');
     plot(nan, nan, 'y.');
     legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'OOI centre estimate', 'LiDAR#1 scan', 'LiDAR#2 scan'});
-    
+    hold off;
+
     hh = initPolarPlots();
 end
 
@@ -418,7 +448,7 @@ function h = initPolarPlots()
     
     subplot(211);  
     h1 = plot(fov, r, '.b');
-    title('LiDAR1(shown in Polar)');  
+    title('LiDAR1 polar scan');  
     xlabel('angle (degrees)');  
     ylabel('range (m)'); 
     axis([-75, 75, 0, 20]); 
@@ -432,7 +462,7 @@ function h = initPolarPlots()
     
     subplot(212);  
     h2 = plot(fov, r, '.b'); 
-    title('LiDAR2(shown in Polar)');  
+    title('LiDAR2 polar scan');  
     xlabel('angle (degrees)');  
     ylabel('range (m)'); 
     axis([-75, 75, 0, 20]); 
@@ -440,5 +470,18 @@ function h = initPolarPlots()
     hold on;  
     h2b = plot(nan, nan, 'g*');
     h2c = plot(nan, nan, 'r+');
-    h = [h1, h1b, h1c, h2, h2b, h2c];
+
+    figure(31); clf();
+    hold on;
+    h3 = plot(0, 0, 'yo');
+    h3b = plot(nan, nan, 'b.');
+    h3c = plot(nan, nan, 'g*');
+    h3d = plot(nan, nan, 'r+');
+    title('LiDAR1 Local CF');
+    xlabel('x (m)');
+    ylabel('y (m)');
+    legend({'LiDAR scanner', 'opaque pixels', 'brilliant pixels', 'OOI centres'});
+    xlim([-5 5]);
+    ylim([0 10]);
+    h = [h1, h1b, h1c, h2, h2b, h2c, h3, h3b, h3c, h3d];
 end
