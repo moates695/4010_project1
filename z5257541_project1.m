@@ -26,6 +26,7 @@ function extract(data)
     centresLidar1CF = {};
     centresGlobal = {};
     prevPlotRefs = [];
+    landmarks = data.Context.Landmarks;
     disp('Begin sampling events');
     for i = 1:data.n
         X_buf(:,i) = X;        
@@ -59,7 +60,8 @@ function extract(data)
                 
                 [centresGlobal, scan1Global, scan2Global] = lidarToGlobalCF(X, localCentres, ranges1, ranges2, data);
                 
-                prevPlotRefs = plotData(prevPlotRefs, X, centresGlobal, scan1Global, scan2Global);
+                pairs = dataAssociation(centresGlobal, landmarks);
+                prevPlotRefs = plotData(prevPlotRefs, X, centresGlobal, scan1Global, scan2Global, pairs);
                 plotOOILocal(hh(7:10), ranges1, localCentres, intensity_idx1);
                 %pause(0.05);
                 continue;            
@@ -169,6 +171,10 @@ function d = distanceBetween(a, b, ranges)
     d = sqrt(ra^2 + rb^2 - 2*ra*rb*cosd(ang));
 end
 
+function d = distanceBetweenCartesian(a, b)
+    d = sqrt((a(1)-b(1))^2 + (a(2)-b(2))^2);
+end
+
 function ang = angleBetweenAbs(a, b)
     ang = abs(a - b) * 0.5;
 end
@@ -252,6 +258,27 @@ function [ranges, intensity_idx] = getScan(scan)
     mask2 = 49152;
     intensity = bitand(scan, mask2);
     intensity_idx = find(intensity > 0);
+end
+
+function pairs = dataAssociation(centresGlobal, landmarks)
+    pairs = {};
+    thresh = 0.3; % in m
+    centres = zeros(2, size(centresGlobal, 2));
+    for i = 1:size(centres, 2)
+        centres(:, i) = centresGlobal{i};
+    end
+    for i = 1:size(centres, 2)
+        distances = [];
+        for j = 1:size(landmarks, 2)
+            distances(end+1) = distanceBetweenCartesian(centres(:, i), landmarks(:, j));
+        end
+        [minDist, minDistIdx] = min(distances);
+        if minDist > thresh
+            continue
+        end
+        pair = {centres(:, i), landmarks(:, minDistIdx)};
+        pairs{end+1} = pair;
+    end
 end
 
 % -------------------------------------------------------------------------
@@ -364,7 +391,7 @@ function plotOOI(h, polarCentres)
     set(h(3), 'xdata', angleIndex, 'ydata', ranges);
 end
 
-function prev = plotData(prev, X, centresGlobal, scan1Global, scan2Global)
+function prev = plotData(prev, X, centresGlobal, scan1Global, scan2Global, pairs)
     figure(11);
     hold on;
     legend('AutoUpdate','off')
@@ -389,6 +416,13 @@ function prev = plotData(prev, X, centresGlobal, scan1Global, scan2Global)
     for i = 1:length(centresGlobal)
         centre = centresGlobal{i};
         prev(end+1) = plot(centre(1), centre(2), 'r+');
+    end
+
+    for i = 1:length(pairs)
+        pair = pairs{i};
+        centre = pair{1};
+        landmark = pair{2};
+        prev(end+1) = plot([centre(1) landmark(1)], [centre(2) landmark(2)], 'm');
     end
 end
 
@@ -435,7 +469,8 @@ function hh=initPlots(data)
     plot(nan, nan,'r+');
     plot(nan, nan, 'c.');
     plot(nan, nan, 'y.');
-    legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'OOI centre estimate', 'LiDAR#1 scan', 'LiDAR#2 scan'});
+    plot(nan, nan, 'm');
+    legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'OOI centre estimate', 'LiDAR#1 scan', 'LiDAR#2 scan', 'DA links'});
     hold off;
 
     hh = initPolarPlots();
@@ -473,7 +508,7 @@ function h = initPolarPlots()
 
     figure(31); clf();
     hold on;
-    h3 = plot(0, 0, 'yo');
+    h3 = plot(0, 0, 'c-s');
     h3b = plot(nan, nan, 'b.');
     h3c = plot(nan, nan, 'g*');
     h3d = plot(nan, nan, 'r+');
@@ -481,7 +516,7 @@ function h = initPolarPlots()
     xlabel('x (m)');
     ylabel('y (m)');
     legend({'LiDAR scanner', 'opaque pixels', 'brilliant pixels', 'OOI centres'});
-    xlim([-5 5]);
-    ylim([0 10]);
+    xlim([-10 10]);
+    ylim([0 20]);
     h = [h1, h1b, h1c, h2, h2b, h2c, h3, h3b, h3c, h3d];
 end
