@@ -484,26 +484,26 @@ function plotDifferences(data, X_buf, subsample_index, estX_buf)
     figure(12)
     subplot(211)
     plot(t, pose_diff * 100);
-    title("Pose difference");
+    title("Pose Difference");
     xlabel('LiDAR event');
     ylabel('difference (cm)');
 
     subplot(212)
     plot(t, heading_diff);
-    title("Heading difference");
+    title("Heading Difference");
     xlabel('LiDAR event');
     ylabel('difference (deg)');
 
     figure(15)
     subplot(211)
     plot(t, estPoseDiff * 100);
-    title("Pose difference");
+    title("Estimated Pose Difference");
     xlabel('LiDAR event');
     ylabel('difference (cm)');
 
     subplot(212)
     plot(t, estHeading_diff);
-    title("Heading difference");
+    title("Estimated Heading Difference");
     xlabel('LiDAR event');
     ylabel('difference (deg)');
     
@@ -523,6 +523,29 @@ function plotDifferences(data, X_buf, subsample_index, estX_buf)
     fprintf("Max heading difference: %.2f deg ", maxHeadingDiff);
     fprintf(direction);
     fprintf("\n");
+
+    avgEstPose = 0;
+    count = 0;
+    for i = 1:length(estPoseDiff)
+        if ~isnan(estPoseDiff(i))
+            avgEstPose = avgEstPose + estPoseDiff(i);
+            count = count + 1;
+        end
+    end
+    avgEstPose = avgEstPose/count;
+    
+    avgEstHeading = 0;
+    count = 0;
+    for i = 1:length(estHeading_diff)
+        if ~isnan(estHeading_diff(i))
+            avgEstHeading = avgEstHeading + estHeading_diff(i);
+            count = count + 1;
+        end
+    end
+    avgEstHeading = avgEstHeading/count;
+
+    fprintf("Average estimated pose difference: %.2f m\n", avgEstPose);
+    fprintf("Average estimated heading difference: %.2f deg\n", avgEstHeading);
 end
 
 function plotLidarTimes(times1, nLidarEvents)
