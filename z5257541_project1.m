@@ -43,7 +43,7 @@ function extract(data)
 
     fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
 
-    lastPose = X(1:2);
+    lastLidarPose = X(1:2);
     estX_buf = zeros(3, data.n, 'single');
 
     for i = 1:data.n
@@ -85,7 +85,7 @@ function extract(data)
             
                 %disp("here");
                 %disp(X(3));
-                [estX, estY, estHeading, lastPose] = estimatePose(hh(11), pairs, data, rangeToPairs, angleToPairs, lastPose);
+                [estX, estY, estHeading, lastLidarPose] = estimatePose(hh(11), pairs, data, rangeToPairs, angleToPairs, lastLidarPose);
                 estX_buf(:,i) = [estX, estY, estHeading];
 
                 prevPlotRefs = plotData(prevPlotRefs, X, centresGlobal, scan1Global, scan2Global, pairs);
@@ -331,7 +331,7 @@ function [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, la
     end
 end
 
-function [estX, estY, estHeading, lastPose] = estimatePose(h, pairs, data, rangeToPairs, angleToPairs, lastPose)
+function [estX, estY, estHeading, lastLidarPose] = estimatePose(h, pairs, data, rangeToPairs, angleToPairs, lastLidarPose)
     estX = nan; estY = nan; estHeading = nan;
     if size(pairs, 2) < 2
         set(h, 'xdata', nan,'ydata', nan);
@@ -377,8 +377,8 @@ function [estX, estY, estHeading, lastPose] = estimatePose(h, pairs, data, range
             ya = K/(y2-y1)-(x2-x1)/(y2-y1)*xa;
             yb = K/(y2-y1)-(x2-x1)/(y2-y1)*xb;
             
-            dista = distanceBetweenCartesian(lastPose, [xa ya]);
-            distb = distanceBetweenCartesian(lastPose, [xb yb]);
+            dista = distanceBetweenCartesian(lastLidarPose, [xa ya]);
+            distb = distanceBetweenCartesian(lastLidarPose, [xb yb]);
 
             if dista < distb
                 x = xa;
@@ -387,12 +387,12 @@ function [estX, estY, estHeading, lastPose] = estimatePose(h, pairs, data, range
                 x = xb;
                 y = yb;
             end
-            disp("Here");
+            %disp("Here");
             %disp(g1);
             %disp(l1);
-            disp(g1);
+            %disp(g1);
             heading = atan2(y1-y,x1-x) - angleToPairs(i)*pi/180;
-            disp(angleToPairs(i));
+            %disp(angleToPairs(i));
             %disp(heading);
             pp = [1 0; 0 1] * l1 + [T2x; T2y];
             %disp(pp);
@@ -407,9 +407,13 @@ function [estX, estY, estHeading, lastPose] = estimatePose(h, pairs, data, range
     estY = sum(estimates(2, :)) / size(estimates, 2);
     estHeading = sum(estimates(3, :)) / size(estimates, 2);
     
+    lastLidarPose = [estX; estY];
+
     set(h, 'xdata', estX,'ydata', estY);
 end
 
+% -------------------------------------------------------------------------
+% -------------------------------------------------------------------------
 % -------------------------------------------------------------------------
 
 function plotRef = plotEstimatedX(X)
