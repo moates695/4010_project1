@@ -43,6 +43,8 @@ function extract(data)
 
     fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
 
+    lastPose = X(1:2);
+
     for i = 1:data.n
         X_buf(:,i) = X;        
         event = events(:,i);                          
@@ -68,7 +70,7 @@ function extract(data)
                 [ranges1, intensity_idx1] = getScan(scan1);
                 [ranges2, intensity_idx2] = getScan(scan2);
 
-                [t1, localCentres] = processLiDAR(hh(1:3), X, ranges1, intensity_idx1, Lidar1Cfg, false);
+                [t1, localCentres, rangeToCentres, angleToCentres] = processLiDAR(hh(1:3), X, ranges1, intensity_idx1, Lidar1Cfg, false);
                 centresLidar1CF{end+1} = localCentres;
                 [t2, ~] = processLiDAR(hh(4:6), X, ranges2, intensity_idx2, Lidar2Cfg, true);
                 lidar1Times(end+1) = t1;
@@ -78,9 +80,9 @@ function extract(data)
                 
                 [centresGlobal, scan1Global, scan2Global] = lidarToGlobalCF(X, localCentres, ranges1, ranges2, data, lidar2Align);
                 
-                pairs = dataAssociation(centresGlobal, landmarks, localCentres);
+                [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres);
             
-                [x, y, heading] = estimatePose(hh(11), pairs, data);
+                [x, y, heading, lastPose] = estimatePose(hh(11), pairs, data, rangeToPairs, angleToPairs, lastPose);
                 
                 prevPlotRefs = plotData(prevPlotRefs, X, centresGlobal, scan1Global, scan2Global, pairs);
                 plotOOILocal(hh(7:10), ranges1, localCentres, intensity_idx1);
@@ -90,6 +92,7 @@ function extract(data)
                 fprintf('DR: dt=%.1f ms, v=%.2f m/s, w=%.2f deg/sec\n', dt*1000, vw.*[1;180/pi]);
                 vw = data.vw(:, index);
                 vw(2) = vw(2) + gyroBias;
+
                 continue;                   
             otherwise  
                 continue;
@@ -110,7 +113,7 @@ end
 
 % ---------------------------------------------------------------------------------
 
-function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg, isLidar2)
+function [t, cartesianCentres, rangeToCentres, angleToCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg, isLidar2)
     tempRanges = ranges;
     for i = 1:length(ranges)
         if tempRanges(i) == 0
@@ -130,6 +133,8 @@ function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg, 
     
     tic();
     cartesianCentres = {};
+    rangeToCentres = [];
+    angleToCentres = [];
     polarCentres = {};
     alreadyFound = [];
     for i = 1:length(intensity_idx)
@@ -174,6 +179,8 @@ function [t, cartesianCentres] = processLiDAR(h, X, ranges, intensity_idx, cfg, 
             polarCentres{end+1} = [rc, idc];
             [xc, yc] = indexRadiusToCartesian(idc, rc);
             cartesianCentres{end+1} = [xc, yc];
+            rangeToCentres(end+1) = rc;
+            angleToCentres(end+1) = indexToAngle(idc);
             indexRange = curr_m : 0.5 : curr_n;
             for j = 1:length(indexRange)
                 if ~ismember(indexRange(j), alreadyFound)
@@ -290,8 +297,10 @@ function [ranges, intensity_idx] = getScan(scan)
     intensity_idx = find(intensity > 0);
 end
 
-function pairs = dataAssociation(centresGlobal, landmarks, localCentres)
+function [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres)
     pairs = {};
+    rangeToPairs = [];
+    angleToPairs = [];
     thresh = 0.3; % in m
     centres = zeros(2, size(centresGlobal, 2));
     for i = 1:size(centres, 2)
@@ -313,10 +322,12 @@ function pairs = dataAssociation(centresGlobal, landmarks, localCentres)
         end
         pair = {centres(:, i), landmarks(:, minDistIdx), centresLocal(:, i)};
         pairs{end+1} = pair;
+        rangeToPairs(end+1) = rangeToCentres(i);
+        angleToPairs(end+1) = angleToCentres(i);
     end
 end
 
-function [x, y, heading] = estimatePose(h, pairs, data)
+function [x, y, heading, lastPose] = estimatePose(h, pairs, data, rangeToPairs, angleToPairs, lastPose)
     x = 0; y = 0; heading = 0;
     if size(pairs, 2) < 2
         set(h, 'xdata', nan,'ydata', nan);
@@ -332,28 +343,57 @@ function [x, y, heading] = estimatePose(h, pairs, data)
         localCentres(:, i) = pair{3};
         globalCentres(:, i) = pair{1};
     end
-
+    %disp(localCentres);
+    %disp(globalCentres);
+        
     estimates = zeros(3, nchoosek(size(localCentres, 2), 2));
     idx = 1;
     for i = 1:size(localCentres, 2)
-        l1 = localCentres(:, i);
+        %l1 = localCentres(:, i);
         g1 = globalCentres(:, i);
+        x1 = g1(1);
+        y1 = g1(2);
+        r1 = rangeToPairs(i);
         for j = 1:size(localCentres, 2)
             if i == j
                 continue
             end
-            l2 = localCentres(:, j);
+            %l2 = localCentres(:, j);
             g2 = globalCentres(:, j);
-            heading = acos(((g1(2)-g2(2))*(l1(2)-l2(2))-(l1(1)-l2(1))*(g2(1)-g1(1)))/((l1(1)-l2(1))^2+(l1(2)-l2(2))^2));
-            x = g1(1)-l1(1)*cos(heading)+l1(2)*sin(heading)-T2x;
-            y = g1(2)-l1(1)*sin(heading)-l1(2)*cos(heading)-T2y;
-            estimates(:, idx) = [x y heading];
+            r2 = rangeToPairs(j);
+            x2 = g2(1);
+            y2 = g2(2);
+           
+            K = (x2^2-x1^2+y2^2-y1^2+r1^2-r2^2)/2;
+            a = 1 + (x2-x1)^2/((y2-y1)^2);
+            b = -2*x1-2*K*(x2-x1)/((y2-y1)^2)+2*y1*(x2-x1)/(y2-y1);
+            c = x1^2+K^2/((y2-y1)^2)+y1^2-2*K*y1/(y2-y1)-r1^2;
+            xa = (-b-sqrt(b^2-4*a*c))/(2*a);
+            xb = (-b+sqrt(b^2-4*a*c))/(2*a);
+            ya = K/(y2-y1)-(x2-x1)/(y2-y1)*xa;
+            yb = K/(y2-y1)-(x2-x1)/(y2-y1)*xb;
+            
+            dista = distanceBetweenCartesian(lastPose, [xa ya]);
+            distb = distanceBetweenCartesian(lastPose, [xb yb]);
+
+            if dista < distb
+                x = xa;
+                y = ya;
+            else
+                x = xb;
+                y = yb;
+            end
+
+            heading = atan2(y1-y,x1-x) - angleToPairs(i);
+            estimates(:, idx) = [x, y, heading];
+
             idx = idx + 1;
         end
     end
-    estX = sum(estimates(:, 1)) / size(estimates, 2);
-    estY = sum(estimates(:, 2)) / size(estimates, 2);
-    %estHeading = sum(estimates(:, 3)) / size(estimates, 2);
+    %disp(estimates);
+    estX = sum(estimates(1, :)) / size(estimates, 2);
+    estY = sum(estimates(2, :)) / size(estimates, 2);
+    estHeading = sum(estimates(3, :)) / size(estimates, 2);
     set(h, 'xdata', estX,'ydata', estY);
 end
 
@@ -529,7 +569,7 @@ function hh=initPlots(data)
     
     landmarks = data.Context.Landmarks;
     plot(landmarks(1,:), landmarks(2,:), 'ko')
-    title('Global CF');
+    title('Global CF (Displaying Data)');
     xlabel('x (m)'); 
     ylabel('y (m)');
 
@@ -562,7 +602,7 @@ function hh=initPlots(data)
     p0=data.pose0;
     plot(p0(1),p0(2),'r*','markersize',10);
     plotRef = plot(p0(1),p0(2),'b.');
-    title('Global CF');
+    title('Global CF (Estimated Pose)');
     xlabel('x (m)'); 
     ylabel('y (m)');
     legend({'landmarks','walls (middle planes)','initial position','estimated position'});
