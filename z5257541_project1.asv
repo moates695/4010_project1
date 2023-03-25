@@ -44,6 +44,7 @@ function extract(data)
     fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
 
     lastPose = X(1:2);
+    estX_buf = zeros(3, data.n, 'single');
 
     for i = 1:data.n
         X_buf(:,i) = X;        
@@ -82,8 +83,11 @@ function extract(data)
                 
                 [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres);
             
-                [x, y, heading, lastPose] = estimatePose(hh(11), pairs, data, rangeToPairs, anglesToPairs, lastPose);
-                
+                %disp("here");
+                %disp(X(3));
+                [estX, estY, estHeading, lastPose] = estimatePose(hh(11), pairs, data, rangeToPairs, angleToPairs, lastPose);
+                estX_buf(:,i) = [estX, estY, estHeading];
+
                 prevPlotRefs = plotData(prevPlotRefs, X, centresGlobal, scan1Global, scan2Global, pairs);
                 plotOOILocal(hh(7:10), ranges1, localCentres, intensity_idx1);
                 %pause(0.05);
@@ -92,6 +96,7 @@ function extract(data)
                 fprintf('DR: dt=%.1f ms, v=%.2f m/s, w=%.2f deg/sec\n', dt*1000, vw.*[1;180/pi]);
                 vw = data.vw(:, index);
                 vw(2) = vw(2) + gyroBias;
+
                 continue;                   
             otherwise  
                 continue;
@@ -99,7 +104,7 @@ function extract(data)
     end
 
     disp('End sampling events');
-    plotDifferences(data, X_buf, subsample_index);
+    plotDifferences(data, X_buf, subsample_index, estX_buf);
     plotLidarTimes(lidar1Times, lidar2Times, length(subsample_index));
 end
 
@@ -326,8 +331,8 @@ function [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, la
     end
 end
 
-function [x, y, heading, lastPose] = estimatePose(h, pairs, data, rangeToPairs, angleToPairs, lastPose)
-    x = 0; y = 0; heading = 0;
+function [estX, estY, estHeading, lastPose] = estimatePose(h, pairs, data, rangeToPairs, angleToPairs, lastPose)
+    estX = nan; estY = nan; estHeading = nan;
     if size(pairs, 2) < 2
         set(h, 'xdata', nan,'ydata', nan);
         return
@@ -348,8 +353,10 @@ function [x, y, heading, lastPose] = estimatePose(h, pairs, data, rangeToPairs, 
     estimates = zeros(3, nchoosek(size(localCentres, 2), 2));
     idx = 1;
     for i = 1:size(localCentres, 2)
-        %l1 = localCentres(:, i);
+        l1 = localCentres(:, i);
         g1 = globalCentres(:, i);
+        x1 = g1(1);
+        y1 = g1(2);
         r1 = rangeToPairs(i);
         for j = 1:size(localCentres, 2)
             if i == j
@@ -358,10 +365,7 @@ function [x, y, heading, lastPose] = estimatePose(h, pairs, data, rangeToPairs, 
             %l2 = localCentres(:, j);
             g2 = globalCentres(:, j);
             r2 = rangeToPairs(j);
-            
-            x1 = g1(1);
             x2 = g2(1);
-            y1 = g1(2);
             y2 = g2(2);
            
             K = (x2^2-x1^2+y2^2-y1^2+r1^2-r2^2)/2;
@@ -373,19 +377,41 @@ function [x, y, heading, lastPose] = estimatePose(h, pairs, data, rangeToPairs, 
             ya = K/(y2-y1)-(x2-x1)/(y2-y1)*xa;
             yb = K/(y2-y1)-(x2-x1)/(y2-y1)*xb;
             
-            dista = distanceBetweenCartesian();
-            distb = ;
+            dista = distanceBetweenCartesian(lastPose, [xa ya]);
+            distb = distanceBetweenCartesian(lastPose, [xb yb]);
 
-            %anga = atan2() - atan2();
-            estimates(:, idx) = [xa, ya, 0];
+            if dista < distb
+                x = xa;
+                y = ya;
+            else
+                x = xb;
+                y = yb;
+            end
+            %disp("Here");
+            %disp(g1);
+            %disp(l1);
+            %disp(g1);
+            if atan2(y1-y,x1-x) > 0
+                
+            else
+                heading = atan2(y1-y,x1-x) + angleToPairs(i)*pi/180;
+            end
+            heading = atan2(y1-y,x1-x) - angleToPairs(i)*pi/180;
+            %disp(angleToPairs(i));
+            %disp(heading);
+            pp = [1 0; 0 1] * l1 + [T2x; T2y];
+            %disp(pp);
+            T1 = g1 - [cos(heading-pi/2) -sin(heading-pi/2); sin(heading-pi/2) cos(heading-pi/2)] * pp; 
+            %disp(T1);
+            estimates(:, idx) = [T1(1), T1(2), heading];            
 
             idx = idx + 1;
         end
     end
-    %disp(estimates);
     estX = sum(estimates(1, :)) / size(estimates, 2);
     estY = sum(estimates(2, :)) / size(estimates, 2);
-    %estHeading = sum(estimates(:, 3)) / size(estimates, 2);
+    estHeading = sum(estimates(3, :)) / size(estimates, 2);
+    
     set(h, 'xdata', estX,'ydata', estY);
 end
 
@@ -398,19 +424,30 @@ function plotRef = plotEstimatedX(X)
     plotRef = plot(X(1), X(2), 'b.');
 end
 
-function plotDifferences(data, X_buf, subsample_index)
+function plotDifferences(data, X_buf, subsample_index, estX_buf)
     X_subsample = zeros(3, length(subsample_index), 'single');
     for i = 1:length(X_subsample)
         X_subsample(:,i) = X_buf(:, subsample_index(i));
     end
     
+    estX_subsample = zeros(3, length(subsample_index), 'single');
+    for i = 1:length(estX_subsample)
+        estX_subsample(:,i) = estX_buf(:, subsample_index(i));
+    end
+
     ground = data.verify.poseL;
     x_diff = abs(ground(1,:) - X_subsample(1,:));
     y_diff = abs(ground(2,:) - X_subsample(2,:));
+
+    estX_diff = abs(ground(1,:) - estX_subsample(1,:));
+    estY_diff = abs(ground(2,:) - estX_subsample(2,:));
     
     groundPose = sqrt(ground(1,:).^2 + ground(2,:).^2);
     pose = sqrt(X_subsample(1,:).^2 + X_subsample(2,:).^2);
     pose_diff = abs(groundPose - pose);
+
+    estPose = sqrt(estX_subsample(1,:).^2 + estX_subsample(2,:).^2);
+    estPoseDiff = abs(groundPose - estPose);
 
     heading_diff = (X_subsample(3,:) - ground(3,:))*180/pi;
     for i = 1:length(heading_diff)
@@ -421,6 +458,18 @@ function plotDifferences(data, X_buf, subsample_index)
                 heading_diff(i) = ((2*pi - X_subsample(3,i) + ground(3,i))) * -1 ;
             end
             heading_diff(i) = heading_diff(i)*180/pi;
+        end
+    end
+
+    estHeading_diff = (estX_subsample(3,:) - ground(3,:))*180/pi;
+    for i = 1:length(estHeading_diff)
+        if abs(estHeading_diff(i)) > 180
+            if ground(3,i) > estX_subsample(3,i)
+                estHeading_diff(i) = (2*pi - ground(3,i)) + estX_subsample(3,i);
+            else
+                estHeading_diff(i) = ((2*pi - estX_subsample(3,i) + ground(3,i))) * -1 ;
+            end
+            estHeading_diff(i) = estHeading_diff(i)*180/pi;
         end
     end
 
@@ -435,6 +484,19 @@ function plotDifferences(data, X_buf, subsample_index)
 
     subplot(212)
     plot(t, heading_diff);
+    title("Heading difference");
+    xlabel('LiDAR event');
+    ylabel('difference (deg)');
+
+    figure(15)
+    subplot(211)
+    plot(t, estPoseDiff * 100);
+    title("Pose difference");
+    xlabel('LiDAR event');
+    ylabel('difference (cm)');
+
+    subplot(212)
+    plot(t, estHeading_diff);
     title("Heading difference");
     xlabel('LiDAR event');
     ylabel('difference (deg)');
@@ -453,13 +515,14 @@ function plotDifferences(data, X_buf, subsample_index)
     end
 
     fprintf("Max heading difference: %.2f deg ", maxHeadingDiff);
-    sprintf(direction, "\n");
+    fprintf(direction);
+    fprintf("\n");
 end
 
 function plotLidarTimes(times1, times2, nLidarEvents)
     figure(13); clf;
     t = 1 : nLidarEvents;
-    subplot(211)
+    %subplot(211)
     plot(t, times1);
     title("LiDAR#1 processing time")
     xlabel('LiDAR#1 event')
@@ -469,21 +532,21 @@ function plotLidarTimes(times1, times2, nLidarEvents)
     yline(avg1, '--', 'color', 'r');
     legend({'processing time', 'average time'})
 
-    subplot(212)
-    plot(t, times2);
-    title("LiDAR#2 processing time")
-    xlabel('LiDAR#2 event')
-    ylabel('time (ms)')
-    avg2 = sum(times2) / length(times2);
-    hold on;
-    yline(avg2, '--', 'color', 'r');
-    legend({'processing time', 'average time'})
+    %subplot(212)
+    %plot(t, times2);
+    %title("LiDAR#2 processing time")
+    %xlabel('LiDAR#2 event')
+    %ylabel('time (ms)')
+    %avg2 = sum(times2) / length(times2);
+    %hold on;
+    %yline(avg2, '--', 'color', 'r');
+    %legend({'processing time', 'average time'})
 
     avg1 = sum(times1) / length(times1);
-    avg2 = sum(times2) / length(times2);
+    %avg2 = sum(times2) / length(times2);
 
     fprintf("Average processing time LiDAR#1: %.2f ms\n", avg1);
-    fprintf("Average processing time LiDAR#2: %.2f ms\n", avg2);
+    %fprintf("Average processing time LiDAR#2: %.2f ms\n", avg2);
 end
 
 function plotOOI(h, polarCentres)
