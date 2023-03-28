@@ -1,6 +1,7 @@
 % Marcus Oates 
 % z5257541
 % File contains the entirety of Project1 code (all parts ABCDEF)
+% usage >>Part_ABCDEF('DataUsr_006b')
 
 function main(file)
     load(file); 
