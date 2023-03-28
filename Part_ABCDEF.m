@@ -35,12 +35,12 @@ function extract(data, file)
     totalDistanceTravelled = 0;
     gyroBias = 0;
     lidar2Align = 0;
-    
-    if file == '.\DataUsr_p020.mat'
+    disp(file)
+    if strcmp(file, 'DataUsr_p020')
         gyroBias = -0.3984375 * pi/180; % rad / sec
         lidar2Align = 5; % deg
         fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
-    elseif file == '.\DataUsr_p021.mat'
+    elseif strcmp(file, 'DataUsr_p021')
         gyroBias = 0.3984375 * pi/180; % rad / sec
         lidar2Align = -5.703125; % deg
         fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
