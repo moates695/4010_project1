@@ -30,9 +30,9 @@ function extract(data)
     p0=data.pose0;
     plot(p0(1),p0(2),'r*','markersize',10);
 
-    h1a = plot(nan, nan,'g.');
-    h1b = plot(nan, nan, 'r.');
-    h1c = plot(nan, nan, 'b.');
+    plot(nan, nan,'g.');
+    plot(nan, nan, 'r.');
+    plot(nan, nan, 'b.');
 
     legend({'landmarks','walls (middle planes)','initial position', 'prediction (bias=0)', 'prediction (bias)', 'ground truth'});
     hold off;
@@ -65,14 +65,14 @@ function extract(data)
             case 1
                 figure(11); hold on; legend('AutoUpdate','off');
                 plot(X2(1), X2(2), 'g.');
-                plot(X1(1), X1(2), 'r.');
                 plot(ground(1,subsampleIdx), ground(2,subsampleIdx), 'b.');
+                plot(X1(1), X1(2), 'r.');
                 hold off;
                 subsampleIdx = subsampleIdx + 1;
             case 2
-                vw1 = data.vw(:, index) + [0; 1.56897421*pi/180];
+                vw1 = data.vw(:, index);
                 vw1(2) = vw1(2) + gyroBias;
-                vw2 = data.vw(:, index) +  + [0; 1.56897421*pi/180];
+                vw2 = data.vw(:, index);
             otherwise
                 continue
         end
@@ -90,14 +90,14 @@ function X = kinematicModel(X, vw, dt)
 end
 
 function bias = optimize(data)
-    thresh = 0.01*pi/180;
+    thresh = 0.1*pi/180;
     low = -2*pi/180;
     high = 2*pi/180;
     bias = 0;
     ground = data.verify.poseL;
 
     while 1
-        %fprintf('Bias estimation: %.8f deg/sec\n', bias*180/pi);
+        fprintf('Current bias estimation: %.8f deg/sec\n', -1*bias*180/pi);
         refresh = false;
 
         X = data.pose0;
@@ -107,7 +107,7 @@ function bias = optimize(data)
         event0 = events(:,1);
         t_last = 0.0001 * double(event0(1)); 
         subsampleIdx = 1;
-        buffNum = 200;
+        buffNum = 250;
         headings = zeros(buffNum, 1);
 
         for i = 1:data.n
@@ -139,7 +139,7 @@ function bias = optimize(data)
                     end
                 
                 case 2
-                    vw = data.vw(:, index) + [0; 1.56897421*pi/180];
+                    vw = data.vw(:, index);
                     vw(2) = vw(2) + bias;
                 otherwise
                     continue
