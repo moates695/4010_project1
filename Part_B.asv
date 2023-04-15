@@ -5,12 +5,12 @@
 
 function main(file)
     load(file); 
-    extract(data, file);
+    extract(data);
 end
 
 % ----------------------------------------
 
-function extract(data, file)
+function extract(data)
     disp('Begin optimizing');
     gyroBias = optimize(data);
     disp('End optimizing');
@@ -30,9 +30,9 @@ function extract(data, file)
     p0=data.pose0;
     plot(p0(1),p0(2),'r*','markersize',10);
 
-    %h1a = plot(nan, nan,'g.');
-    %h1b = plot(nan, nan, 'r.');
-    %h1c = plot(nan, nan, 'b.');
+    plot(nan, nan,'g.');
+    plot(nan, nan, 'r.');
+    plot(nan, nan, 'b.');
 
     legend({'landmarks','walls (middle planes)','initial position', 'prediction (bias=0)', 'prediction (bias)', 'ground truth'});
     hold off;
@@ -44,11 +44,11 @@ function extract(data, file)
     events  = data.table;
     event0 = events(:,1);
     t_last = 0.0001 * double(event0(1));    
-    ground = data.verify.poseL
+    ground = data.verify.poseL;
         
     disp('Begin sampling events'); 
     subsampleIdx = 1;
-            
+
     for i = 1:data.n
         event = events(:,i);
         index = event(2);
@@ -63,10 +63,10 @@ function extract(data, file)
 
         switch sensorID
             case 1
-                figure(11); hold on;
+                figure(11); hold on; legend('AutoUpdate','off');
                 plot(X2(1), X2(2), 'g.');
+                plot(ground(1,subsampleIdx), ground(2,subsampleIdx), 'b.');
                 plot(X1(1), X1(2), 'r.');
-                plot(gro, , 'b.');
                 hold off;
                 subsampleIdx = subsampleIdx + 1;
             case 2
@@ -76,35 +76,28 @@ function extract(data, file)
             otherwise
                 continue
         end
-
-        if sensorID == 2
-            
-        end
     end
 
     disp('End sampling events');
-    plotPaths();
-    %plotDifferences(data, X_buf, subsample_index, estX_buf);
-    %plotLidarTimes(lidar1Times, length(subsample_index));
 end
 
 % --------------------------------------------------------------------------------
 
 function X = kinematicModel(X, vw, dt)
+    %vw = vw + [1.56897421; 0];
     dXdt = [vw(1) * cos(X(3)); vw(1) * sin(X(3)); vw(2)];
     X = X + dXdt * dt;
 end
 
 function bias = optimize(data)
-    thresh = 5*pi/180;
+    thresh = 0.1*pi/180;
     low = -2*pi/180;
     high = 2*pi/180;
     bias = 0;
     ground = data.verify.poseL;
 
     while 1
-        pause(0.5)
-        %fprintf('Bias estimation: %.8f deg/sec\n', bias*180/pi);
+        fprintf('Current bias estimation: %.8f deg/sec\n', -1*bias*180/pi);
         refresh = false;
 
         X = data.pose0;
@@ -114,7 +107,7 @@ function bias = optimize(data)
         event0 = events(:,1);
         t_last = 0.0001 * double(event0(1)); 
         subsampleIdx = 1;
-        buffNum = 30;
+        buffNum = 250;
         headings = zeros(buffNum, 1);
 
         for i = 1:data.n
@@ -137,8 +130,12 @@ function bias = optimize(data)
                         subsampleIdx = subsampleIdx + 1;
                         continue
                     end
-                    avg = sum(headings) / buffNum;
-                    groundAvg = sum(ground(3,(subsampleIdx-buffNum+1):subsampleIdx)) / buffNum;
+                    %avg = sum(headings) / buffNum;
+                    %groundAvg = sum(ground(3,(subsampleIdx-buffNum+1):subsampleIdx)) / buffNum;
+                    headingDiff = zeros(buffNum, 1)
+                    for m = 1:buffNum
+                        headingDiff(m) = angleBetween(headings(i), ground)^2;
+                    end
                     if angleBetween(avg, groundAvg) >= thresh
                         refresh = true;
                     else
@@ -166,10 +163,8 @@ function bias = optimize(data)
         else
             break
         end
-
     end
-
-    fprintf('The bias for the gyroscope is %.3f degrees/sec\n', bias*180/pi);
+    fprintf('The bias for the gyroscope is %.8f degrees/sec\n', -1*bias*180/pi);
 end
 
 function ang = angleBetween(a, b)

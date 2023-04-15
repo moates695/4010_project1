@@ -95,8 +95,14 @@ function bias = optimize(data)
     high = 2*pi/180;
     bias = 0;
     ground = data.verify.poseL;
+    buffNum = 100;
+
+    lastBias = 100;
 
     while 1
+        if abs(lastBias - bias) < 0.00001
+            break
+        end
         fprintf('Current bias estimation: %.8f deg/sec\n', -1*bias*180/pi);
         refresh = false;
 
@@ -107,7 +113,6 @@ function bias = optimize(data)
         event0 = events(:,1);
         t_last = 0.0001 * double(event0(1)); 
         subsampleIdx = 1;
-        buffNum = 250;
         headings = zeros(buffNum, 1);
 
         for i = 1:data.n
@@ -149,11 +154,12 @@ function bias = optimize(data)
             end
         end
         if refresh
-            if spinDirection(X(3), ground(3,subsampleIdx)) == 1
+            if spinDirection(avg, groundAvg) == 1
                 high = bias;
             else
                 low = bias; 
             end
+            lastBias = bias;
             bias = (low+high)/2;
             continue
         else
