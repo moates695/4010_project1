@@ -48,7 +48,7 @@ function extract(data)
         
     disp('Begin sampling events'); 
     subsampleIdx = 1;
-            
+
     for i = 1:data.n
         event = events(:,i);
         index = event(2);
@@ -70,40 +70,33 @@ function extract(data)
                 hold off;
                 subsampleIdx = subsampleIdx + 1;
             case 2
-                vw1 = data.vw(:, index);
+                vw1 = data.vw(:, index) + [0; 1.56897421*pi/180];
                 vw1(2) = vw1(2) + gyroBias;
-                vw2 = data.vw(:, index);
+                vw2 = data.vw(:, index) +  + [0; 1.56897421*pi/180];
             otherwise
                 continue
-        end
-
-        if sensorID == 2
-            
         end
     end
 
     disp('End sampling events');
-    plotPaths();
-    %plotDifferences(data, X_buf, subsample_index, estX_buf);
-    %plotLidarTimes(lidar1Times, length(subsample_index));
 end
 
 % --------------------------------------------------------------------------------
 
 function X = kinematicModel(X, vw, dt)
+    %vw = vw + [1.56897421; 0];
     dXdt = [vw(1) * cos(X(3)); vw(1) * sin(X(3)); vw(2)];
     X = X + dXdt * dt;
 end
 
 function bias = optimize(data)
-    thresh = 1*pi/180;
+    thresh = 0.01*pi/180;
     low = -2*pi/180;
     high = 2*pi/180;
     bias = 0;
     ground = data.verify.poseL;
 
     while 1
-        pause(0.5)
         %fprintf('Bias estimation: %.8f deg/sec\n', bias*180/pi);
         refresh = false;
 
@@ -114,7 +107,7 @@ function bias = optimize(data)
         event0 = events(:,1);
         t_last = 0.0001 * double(event0(1)); 
         subsampleIdx = 1;
-        buffNum = 100;
+        buffNum = 200;
         headings = zeros(buffNum, 1);
 
         for i = 1:data.n
@@ -146,7 +139,7 @@ function bias = optimize(data)
                     end
                 
                 case 2
-                    vw = data.vw(:, index);
+                    vw = data.vw(:, index) + [0; 1.56897421*pi/180];
                     vw(2) = vw(2) + bias;
                 otherwise
                     continue
@@ -166,10 +159,8 @@ function bias = optimize(data)
         else
             break
         end
-
     end
-
-    fprintf('The bias for the gyroscope is %.3f degrees/sec\n', bias*180/pi);
+    fprintf('The bias for the gyroscope is %.8f degrees/sec\n', -1*bias*180/pi);
 end
 
 function ang = angleBetween(a, b)
