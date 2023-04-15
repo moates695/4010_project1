@@ -14,7 +14,15 @@ function extract(data, file)
     [h, hh] = initPlots(data);
     
     X = data.pose0; % [meters; meters; radians]
+    Px = zeros(3, 3, 'single');
     X_buf = zeros(3, data.n, 'single');
+    Px_buf = {};
+    Pu = [0.1^2 0; 0 (4*pi/180)^2];
+    R = [0.25^2 0; 0 (3*pi/180)^2];
+
+    L1x = data.LidarsCfg.Lidar1.Ly;
+    L1y = data.LidarsCfg.Lidar1.Lx; 
+
     subsample_index = []; % lidar scan indexes
     vw = [0; 0]; % [meters/sec; rad/sec]
     events  = data.table;
@@ -31,21 +39,22 @@ function extract(data, file)
     centresGlobal = {};
     prevPlotRefs = [];
     landmarks = data.Context.Landmarks;
+    %landmarks2 = data.Context.Landmarks2;
+    %landmarks4 = data.Context.Landmarks4;
     disp('Begin sampling events');
 
     totalDistanceTravelled = 0;
     gyroBias = 0;
     lidar2Align = 0;
-    disp(file)
-    if strcmp(file, 'DataUsr_p020')
-        gyroBias = -0.3984375 * pi/180; % rad / sec
-        lidar2Align = 5; % deg
-        fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
-    elseif strcmp(file, 'DataUsr_p021')
-        gyroBias = 0.3984375 * pi/180; % rad / sec
-        lidar2Align = -5.703125; % deg
-        fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
-    end 
+    %if strcmp(file, 'DataUsr_p020')
+        %gyroBias = -0.3984375 * pi/180; % rad / sec
+        %lidar2Align = 5; % deg
+        %fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
+    %elseif strcmp(file, 'DataUsr_p021')
+        %gyroBias = 0.3984375 * pi/180; % rad / sec
+        %lidar2Align = -5.703125; % deg
+        %fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
+    %end
 
     lastLidarPose = X(1:2);
     estX_buf = zeros(3, data.n, 'single');
@@ -59,7 +68,8 @@ function extract(data, file)
         t_last = 0.0001 * double(event(1));
        
         X_last = X;
-        X = kinematicModel(X, vw, dt);    
+        %X = kinematicModel(X, vw, dt);
+        [X, Px] = predictKinematic(X, Px, vw, dt, Pu);
         totalDistanceTravelled = totalDistanceTravelled + distanceBetweenCartesian(X_last, X);
         fprintf('Total distance travelled: %.3f m\n', totalDistanceTravelled);
 
@@ -86,8 +96,45 @@ function extract(data, file)
                 
                 [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres);
             
-                [estX, estY, estHeading, lastLidarPose] = estimatePose(hh(11), pairs, data, rangeToPairs, angleToPairs, lastLidarPose);
-                estX_buf(:,i) = [estX, estY, estHeading];
+                %%% update step
+                for j = 1:length(pairs)
+                    pair = pairs{j};
+                    X2 = pair{1};
+                    %rangeToCart = distanceBetweenCartesian(X(1:2), X2);
+                    %rangeToCart = rotation(X(3))*X(1:2)+[L1x; L1y];
+
+                    %x1 = X(1); y1 = X(2);
+                    Xl = rotation(X(3))*[L1x; L1y] + X(1:2);
+                    %disp(Xl)
+                    range = rangeToPairs(j);
+                    x1 = Xl(1); y1 = Xl(2);
+                    x2 = X2(1); y2 = X2(2); 
+                    z = range - sqrt((x2-x1)^2+(y2-y1)^2);
+                    %H = [-(x2-x1)/sqrt((x2-x1)^2+(y2-y1)^2) -(y2-y1)/sqrt((x2-x1)^2+(y2-y1)^2) 0];
+                    H = [-(x2-x1)/sqrt((x2-x1)^2+(y2-y1)^2) -(y2-y1)/sqrt((x2-x1)^2+(y2-y1)^2) ((x2-x1)*(L1x*sin(X(3))+L1x*cos(X(3)))+(y2-y1)*(-L1y*cos(X(3))+L1y*sin(X(3))))/sqrt((x2-x1)^2+(y2-y1)^2)];
+                    [X, Px] = updateKinematic(X, Px, R, H, z);
+                    
+                    
+                    %Xl = rotation(X(3))*[L1x; L1y] + X(1:2);
+                    %Xl = [Xl; X(3)];
+                    %x1 = Xl(1); y1 = Xl(2);
+                    
+                    %pair = pairs{j};
+                    %;
+                    %x2 = X2(1); y2 = X2(2);
+
+                    %range = rangeToPairs(j);
+                    
+                    %z = [range - sqrt((x2-x1)^2+(y2-y1)^2); 0];
+                    %H = [-(x2-x1)/sqrt((x2-x1)^2+(y2-y1)^2) -(y2-y1)/sqrt((x2-x1)^2+(y2-y1)^2) 0; (y2-y1)/((x2-x1)^2+(y2-y1)^2) -(x2-x1)/((x2-x1)^2+(y2-y1)^2) -1];
+                    %[Xl2, Px] = updateKinematic(Xl, Px, R, H, z);
+                    %X = Xl2(1:2) - rotation(Xl2(3))*[L1x; L1y];
+                    %X = [X; Xl2(3)];
+
+                end
+
+                %[estX, estY, estHeading, lastLidarPose] = estimatePose(hh(11), pairs, data, rangeToPairs, angleToPairs, lastLidarPose);
+                %estX_buf(:,i) = [estX, estY, estHeading];
 
                 prevPlotRefs = plotData(prevPlotRefs, h, X, centresGlobal, scan1Global, scan2Global, pairs, alreadyFoundGlobal);
                 plotOOILocal(hh(7:10), ranges1, localCentres, intensity_idx1);
@@ -114,6 +161,22 @@ end
 function X = kinematicModel(X, vw, dt)
     dXdt = [vw(1) * cos(X(3)); vw(1) * sin(X(3)); vw(2)];
     X = X + dXdt * dt;
+end
+
+function [X, Px] = predictKinematic(X, Px, vw, dt, Pu)
+    J = [1 0 -dt*vw(1)*sin(X(3)); 0 1 dt*vw(1)*cos(X(3)); 0 0 1];
+    Ju = [dt*cos(X(3)) 0; dt*sin(X(3)) 0; 0 dt];
+    Px = J*Px*J' + Ju*Pu*Ju';
+    dXdt = [vw(1) * cos(X(3)); vw(1) * sin(X(3)); vw(2)];
+    X = X + dXdt * dt;
+end
+
+function [X, Px] = updateKinematic(X, Px, R, H, z)
+    S = R + H*Px*H';
+    disp(size(S))
+    K = Px*H'*inv(S);
+    X = X + K*z;
+    Px = Px - K*H*Px;
 end
 
 % ---------------------------------------------------------------------------------
