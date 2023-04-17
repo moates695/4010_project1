@@ -1,7 +1,7 @@
 % Marcus Oates 
 % z5257541
 % File contains the entirety of Project1 code (all parts ABCDEF)
-% usage >>Part_ABCDEF('DataUsr_006b')
+% usage >>Part_B('DataUsr_006b')
 
 function main(file)
     load(file); 
@@ -95,8 +95,14 @@ function bias = optimize(data)
     high = 2*pi/180;
     bias = 0;
     ground = data.verify.poseL;
+    buffNum = 100;
+
+    lastBias = 100;
 
     while 1
+        if abs(lastBias - bias) < 0.00001
+            break
+        end
         fprintf('Current bias estimation: %.8f deg/sec\n', -1*bias*180/pi);
         refresh = false;
 
@@ -107,7 +113,6 @@ function bias = optimize(data)
         event0 = events(:,1);
         t_last = 0.0001 * double(event0(1)); 
         subsampleIdx = 1;
-        buffNum = 250;
         headings = zeros(buffNum, 1);
 
         for i = 1:data.n
@@ -130,18 +135,13 @@ function bias = optimize(data)
                         subsampleIdx = subsampleIdx + 1;
                         continue
                     end
-                    %avg = sum(headings) / buffNum;
-                    %groundAvg = sum(ground(3,(subsampleIdx-buffNum+1):subsampleIdx)) / buffNum;
-                    headingDiff = zeros(buffNum, 1)
-                    for m = 1:buffNum
-                        headingDiff(m) = angleBetween(headings(i), ground)^2;
-                    end
+                    avg = sum(headings) / buffNum;
+                    groundAvg = sum(ground(3,(subsampleIdx-buffNum+1):subsampleIdx)) / buffNum;
                     if angleBetween(avg, groundAvg) >= thresh
                         refresh = true;
                     else
                         subsampleIdx = subsampleIdx + 1;
                     end
-                
                 case 2
                     vw = data.vw(:, index);
                     vw(2) = vw(2) + bias;
@@ -153,11 +153,19 @@ function bias = optimize(data)
             end
         end
         if refresh
-            if spinDirection(X(3), ground(3,subsampleIdx)) == 1
-                high = bias;
-            else
-                low = bias; 
+            tempHigh = bias;
+            tempBias = (low+tempHigh)/2;
+            if CostFunction() < CostFunction
+                
+            else 
+
             end
+            %if spinDirection(avg, groundAvg) == 1
+                %high = bias;
+            %else
+                %low = bias; 
+            %end
+            lastBias = bias;
             bias = (low+high)/2;
             continue
         else
@@ -174,7 +182,11 @@ function ang = angleBetween(a, b)
     end
 end
 
-function dir = spinDirection(a, b) 
+function cost = CostFunction(bias, estH, data) 
+    for i = 1:data.n
+end
+
+function dir = spinDirection(a, b)
     if a < b
         if abs(a-b) <= 180
             dir = -1;

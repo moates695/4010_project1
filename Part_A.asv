@@ -97,23 +97,22 @@ function extract(data, file)
                 [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres);
 
                 %%% update step
-                tempX = X;
+
                 for j = 1:length(pairs)
                     pair = pairs{j};
-                    X2 = pair{1};
+                    X2 = pair{2};
 
                     X1 = pair{2};
                     xk = X1(1); yk = X1(2);
-                    Xs = rotation(tempX(3))*[L1x; L1y]+tempX(1:2);
+                    Xs = rotation(X(3))*[L1x; L1y]+X(1:2);
                     xs = Xs(1); ys = Xs(2);
                     %disp('');
                     %disp(rangeToPairs(j))
                     %disp(sqrt((xk-xs)^2+(yk-ys)^2))
-                    %z = rangeToPairs(j) - sqrt((xk-xs)^2+(yk-ys)^2);
-                    z = sqrt((X2(1)-xs)^2+(X2(2)-ys)^2) - sqrt((xk-xs)^2+(yk-ys)^2);
-                    H = [-(xk-xs)/sqrt((xk-xs)^2+(yk-ys)^2) -(yk-ys)/sqrt((xk-xs)^2+(yk-ys)^2) 0]*[1 0 -L1x*sin(X(3))-L1y*cos(X(3)); 0 1 L1x*cos(X(3))-L1y*sin(X(3)); 0 0 1];
+                    z = rangeToPairs(j) - sqrt((xk-xs)^2+(yk-ys)^2);
+                    %z = abs(sqrt((X2(1)-xs)^2+(X2(2)-ys)^2) - sqrt((xk-xs)^2+(yk-ys)^2));
+                    H = [-(xk-xs)/sqrt((xk-xs)^2+(yk-ys)^2) -(yk-ys)/sqrt((xk-xs)^2+(yk-ys)^2) 0]*[1 0 -L1x*sin(X(3))-L1y*cos(X(3))];
                     [X, Px] = updateKinematic(X, Px, 0.25^2, H, z);
-                    disp(z);
                 end
 
 

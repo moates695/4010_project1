@@ -1,7 +1,7 @@
 % Marcus Oates 
 % z5257541
 % File contains the entirety of Project1 code (all parts ABCDEF)
-% usage >>Part_ABCDEF('DataUsr_006b')
+% usage >>Part_B('DataUsr_006b')
 
 function main(file)
     load(file); 
@@ -84,25 +84,12 @@ end
 % --------------------------------------------------------------------------------
 
 function X = kinematicModel(X, vw, dt)
-    %vw = vw + [1.56897421; 0];
     dXdt = [vw(1) * cos(X(3)); vw(1) * sin(X(3)); vw(2)];
     X = X + dXdt * dt;
 end
 
 function bias = optimize(data)
-    thresh = 0.1*pi/180;
-    low = -2*pi/180;
-    high = 2*pi/180;
-    bias = 0;
-    ground = data.verify.poseL;
-    buffNum = 100;
-
-    lastBias = 100;
-
     while 1
-        if abs(lastBias - bias) < 0.00001
-            break
-        end
         fprintf('Current bias estimation: %.8f deg/sec\n', -1*bias*180/pi);
         refresh = false;
 
@@ -142,7 +129,6 @@ function bias = optimize(data)
                     else
                         subsampleIdx = subsampleIdx + 1;
                     end
-                
                 case 2
                     vw = data.vw(:, index);
                     vw(2) = vw(2) + bias;
@@ -169,25 +155,6 @@ function bias = optimize(data)
     fprintf('The bias for the gyroscope is %.8f degrees/sec\n', -1*bias*180/pi);
 end
 
-function ang = angleBetween(a, b)
-    ang = abs(a - b);
-    if ang > pi/2
-        ang = 2*pi - ang;
-    end
-end
+function cost = CostFunc(X, )
 
-function dir = spinDirection(a, b) 
-    if a < b
-        if abs(a-b) <= 180
-            dir = -1;
-        else
-            dir = 1;
-        end
-    else
-        if abs(a-b) > 180
-            dir = -1;
-        else
-            dir = 1;
-        end
-    end
 end
