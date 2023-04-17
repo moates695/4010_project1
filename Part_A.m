@@ -11,17 +11,28 @@ end
 % ----------------------------------------
 
 function extract(data, file)
-    [h, hh] = initPlots(data);
+    [h] = initPlots(data);
     
     X = data.pose0; % [meters; meters; radians]
     Px = zeros(3, 3, 'single');
+    X50 = X;
+    Px50 = Px;
+    X25 = X;
+    Px25 = Px;
     X_buf = zeros(3, data.n, 'single');
     Px_buf = {};
+    X50_buf = zeros(3, data.n, 'single');
+    Px50_buf = {};
+    X25_buf = zeros(3, data.n, 'single');
+    Px25_buf = {};
     Pu = [0.1^2 0; 0 (4*pi/180)^2];
     R = [0.25^2 0; 0 (3*pi/180)^2];
 
     L1x = data.LidarsCfg.Lidar1.Ly;
     L1y = data.LidarsCfg.Lidar1.Lx;
+
+    L2x = data.LidarsCfg.Lidar2.Ly;
+    L2y = data.LidarsCfg.Lidar2.Lx;
 
     subsample_index = []; % lidar scan indexes
     vw = [0; 0]; % [meters/sec; rad/sec]
@@ -32,46 +43,33 @@ function extract(data, file)
     Lidar1Cfg=data.LidarsCfg.Lidar1;  
     Lidar2Cfg=data.LidarsCfg.Lidar2;
 
-    lidar1Times = [];
-    lidar2Times = [];
-
-    centresLidar1CF = {};
-    centresGlobal = {};
     prevPlotRefs = [];
+    prevPlotRefs50 = [];
+    prevPlotRefs25 = [];
     landmarks = data.Context.Landmarks;
-    %landmarks2 = data.Context.Landmarks2;
-    %landmarks4 = data.Context.Landmarks4;
+    landmarks2 = data.Context.Landmarks2;
+    landmarks4 = data.Context.Landmarks4;
     disp('Begin sampling events');
 
-    totalDistanceTravelled = 0;
     gyroBias = 0;
     lidar2Align = 0;
-    %if strcmp(file, 'DataUsr_p020')
-        %gyroBias = -0.3984375 * pi/180; % rad / sec
-        %lidar2Align = 5; % deg
-        %fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
-    %elseif strcmp(file, 'DataUsr_p021')
-        %gyroBias = 0.3984375 * pi/180; % rad / sec
-        %lidar2Align = -5.703125; % deg
-        %fprintf('The bias for the gyroscope is %.3f degrees and the angle error for lidar 2 is %.3f degrees\n', gyroBias*180/pi, lidar2Align);
-    %end
-
-    lastLidarPose = X(1:2);
-    estX_buf = zeros(3, data.n, 'single');
 
     for i = 1:data.n
-        X_buf(:,i) = X;        
+        X_buf(:,i) = X;  
+        Px_buf{end+1} = Px;
+        X50_buf(:,i) = X50;  
+        Px50_buf{end+1} = Px50;
+        X25_buf(:,i) = X25;  
+        Px25_buf{end+1} = Px25;
         event = events(:,i);                          
 
         t_curr = 0.0001 * double(event(1));
         dt = t_curr - t_last;
         t_last = 0.0001 * double(event(1));
        
-        X_last = X;
-        %X = kinematicModel(X, vw, dt);
         [X, Px] = predictKinematic(X, Px, vw, dt, Pu);
-        totalDistanceTravelled = totalDistanceTravelled + distanceBetweenCartesian(X_last, X);
-        fprintf('Total distance travelled: %.3f m\n', totalDistanceTravelled);
+        [X50, Px50] = predictKinematic(X50, Px50, vw, dt, Pu);
+        [X25, Px25] = predictKinematic(X25, Px25, vw, dt, Pu);
 
         index = event(2);
         sensorID = event(3);
@@ -85,16 +83,50 @@ function extract(data, file)
                 [ranges1, intensity_idx1] = getScan(scan1);
                 [ranges2, intensity_idx2] = getScan(scan2);
 
-                [t1, localCentres, rangeToCentres, angleToCentres, alreadyFound] = processLiDAR(hh(1:3), X, ranges1, intensity_idx1, Lidar1Cfg, false);
-                centresLidar1CF{end+1} = localCentres;
-                processLiDAR(hh(4:6), X, ranges2, intensity_idx2, Lidar2Cfg, true);
-                lidar1Times(end+1) = t1;
+                [~, localCentres, rangeToCentres, angleToCentres, alreadyFound] = processLiDAR(X, ranges1, intensity_idx1, Lidar1Cfg, false);
+                [~, localCentres2, rangeToCentres2, angleToCentres2, ~] = processLiDAR(X, ranges2, intensity_idx2, Lidar2Cfg, false);
+                tempLocal2 = localCentres2;
+                localCentres2 = {};
+                for q = 1:size(tempLocal2, 2)
+                    tempPoint = tempLocal2{q};
+                    localCentres2{end+1} = [tempPoint(1), tempPoint(2)];
+                end
 
                 subsample_index(end + 1) = i;
                 
                 [centresGlobal, scan1Global, scan2Global, alreadyFoundGlobal] = lidarToGlobalCF(X, localCentres, ranges1, ranges2, data, lidar2Align, alreadyFound);
+                globalCentres2 = zeros(2, size(localCentres2, 2));
+                for q = 1:size(globalCentres2, 2)
+                    localPoint = localCentres2{q};
+                    %disp(localPoint');
+                    %carcf = rotation(pi)*localPoint'+[L2y;L2x];
+                    %disp(carcf);
+                    %centreGCF = rotation(X(3)-pi/2)*carcf+X(1:2);
+                    %disp(X);
+                    %disp(centreGCF);
+                    centreGCF = lidarToGlobal(localPoint', (X(3)-pi/2), pi, X(1:2), [L2x; L2y]);
+                    globalCentres2(:, q) = [centreGCF(1); centreGCF(2)];                    
+                end
+                %tempGlobalCentres2 = globalCentres2;
+                %globalCentres2 = zeros(2, size(localCentres2, 2));
+                %for q = 1:size(tempGlobalCentres2, 2)
+                    %globalCentre = tempGlobalCentres2(:,q);
+                    %pointCCF = inv(rotation(X(3)))*(globalCentre - X(1:2));
+                    %pointCCF = [-pointCCF(1); pointCCF(2)];
+                    %pointGCF = rotation(X(3))*pointCCF+X(1:2);
+                    %globalCentres2(:,q) = [pointGCF(1); -pointGCF(2)];
+               % end
+
+                for q = 1:size(globalCentres2, 2)
+                    centresGlobal{end+1} = globalCentres2(:, q);
+                    localCentres{end+1} = localCentres2{q};
+                    rangeToCentres(end+1) = rangeToCentres2(q);
+                    angleToCentres(end+1) = angleToCentres2(q);
+                end
                 
-                [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres);
+                [pairs, ~, ~] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres);
+                [pairs50, ~, ~] = dataAssociation(centresGlobal, landmarks2, localCentres, rangeToCentres, angleToCentres);
+                [pairs25, ~, ~] = dataAssociation(centresGlobal, landmarks4, localCentres, rangeToCentres, angleToCentres);
 
                 ranges = zeros(1, length(pairs));
                 Xs = rotation(X(3))*[L1x; L1y]+X(1:2);
@@ -104,35 +136,58 @@ function extract(data, file)
                     ranges(j) = sqrt((pairX(1)-Xs(1))^2+(pairX(2)-Xs(2))^2);
                 end
 
-                %%% update step
-                tempX = X;
+                ranges50 = zeros(1, length(pairs50));
+                X50s = rotation(X50(3))*[L1x; L1y]+X50(1:2);
+                for j = 1:length(pairs50)
+                    pair = pairs50{j};
+                    pairX = pair{1};
+                    ranges50(j) = sqrt((pairX(1)-X50s(1))^2+(pairX(2)-X50s(2))^2);
+                end
+
+                ranges25 = zeros(1, length(pairs25));
+                X25s = rotation(X25(3))*[L1x; L1y]+X25(1:2);
+                for j = 1:length(pairs25)
+                    pair = pairs25{j};
+                    pairX = pair{1};
+                    ranges25(j) = sqrt((pairX(1)-X25s(1))^2+(pairX(2)-X25s(2))^2);
+                end
+
                 for j = 1:length(pairs)
                     pair = pairs{j};
-                    X2 = pair{1};
-
                     X1 = pair{2};
                     xk = X1(1); yk = X1(2);
                     Xs = rotation(X(3))*[L1x; L1y]+X(1:2);
                     xs = Xs(1); ys = Xs(2);
-                    %disp('');
-                    %disp(rangeToPairs(j))
-                    %disp(sqrt((xk-xs)^2+(yk-ys)^2))
-                    %z = rangeToPairs(j) - sqrt((xk-xs)^2+(yk-ys)^2);
-                    %z = sqrt((X2(1)-xs)^2+(X2(2)-ys)^2) - sqrt((xk-xs)^2+(yk-ys)^2);
                     z = ranges(j) - sqrt((xk-xs)^2+(yk-ys)^2);
                     H = [-(xk-xs)/sqrt((xk-xs)^2+(yk-ys)^2) -(yk-ys)/sqrt((xk-xs)^2+(yk-ys)^2) 0]*[1 0 -L1x*sin(X(3))-L1y*cos(X(3)); 0 1 L1x*cos(X(3))-L1y*sin(X(3)); 0 0 1];
                     [X, Px] = updateKinematic(X, Px, 0.25^2, H, z);
-                    disp(X1);
-                    disp(z);
                 end
 
+                for j = 1:length(pairs50)
+                    pair = pairs50{j};
+                    X1 = pair{2};
+                    xk = X1(1); yk = X1(2);
+                    X50s = rotation(X50(3))*[L1x; L1y]+X50(1:2);
+                    xs = X50s(1); ys = X50s(2);
+                    z = ranges(j) - sqrt((xk-xs)^2+(yk-ys)^2);
+                    H = [-(xk-xs)/sqrt((xk-xs)^2+(yk-ys)^2) -(yk-ys)/sqrt((xk-xs)^2+(yk-ys)^2) 0]*[1 0 -L1x*sin(X(3))-L1y*cos(X(3)); 0 1 L1x*cos(X(3))-L1y*sin(X(3)); 0 0 1];
+                    [X50, Px50] = updateKinematic(X50, Px50, 0.25^2, H, z);
+                end
 
-                %[estX, estY, estHeading, lastLidarPose] = estimatePose(hh(11), pairs, data, rangeToPairs, angleToPairs, lastLidarPose);
-                %estX_buf(:,i) = [estX, estY, estHeading];
+                for j = 1:length(pairs25)
+                    pair = pairs25{j};
+                    X1 = pair{2};
+                    xk = X1(1); yk = X1(2);
+                    X25s = rotation(X25(3))*[L1x; L1y]+X25(1:2);
+                    xs = X25s(1); ys = X25s(2);
+                    z = ranges(j) - sqrt((xk-xs)^2+(yk-ys)^2);
+                    H = [-(xk-xs)/sqrt((xk-xs)^2+(yk-ys)^2) -(yk-ys)/sqrt((xk-xs)^2+(yk-ys)^2) 0]*[1 0 -L1x*sin(X(3))-L1y*cos(X(3)); 0 1 L1x*cos(X(3))-L1y*sin(X(3)); 0 0 1];
+                    [X25, Px25] = updateKinematic(X25, Px25, 0.25^2, H, z);
+                end
 
                 prevPlotRefs = plotData(prevPlotRefs, h, X, centresGlobal, scan1Global, scan2Global, pairs, alreadyFoundGlobal);
-                plotOOILocal(hh(7:10), ranges1, localCentres, intensity_idx1);
-                %pause(0.05);
+                prevPlotRefs50 = plotData(prevPlotRefs50, h(7:12), X50, centresGlobal, scan1Global, scan2Global, pairs50, alreadyFoundGlobal);
+                prevPlotRefs25 = plotData(prevPlotRefs25, h(13:18), X25, centresGlobal, scan1Global, scan2Global, pairs25, alreadyFoundGlobal);
                 continue;            
             case 2 % speed and gyros
                 fprintf('DR: dt=%.1f ms, v=%.2f m/s, w=%.2f deg/sec\n', dt*1000, vw.*[1;180/pi]);
@@ -146,8 +201,7 @@ function extract(data, file)
     end
 
     disp('End sampling events');
-    plotDifferences(data, X_buf, subsample_index, estX_buf);
-    plotLidarTimes(lidar1Times, length(subsample_index));
+    plotConsistency(data, X_buf, Px_buf, X50_buf, Px50_buf, X25_buf, Px25_buf, subsample_index);
 end
 
 % --------------------------------------------------------------------------------
@@ -174,14 +228,13 @@ end
 
 % ---------------------------------------------------------------------------------
 
-function [t, cartesianCentres, rangeToCentres, angleToCentres, alreadyFound] = processLiDAR(h, X, ranges, intensity_idx, cfg, isLidar2)
+function [t, cartesianCentres, rangeToCentres, angleToCentres, alreadyFound] = processLiDAR(X, ranges, intensity_idx, cfg, isLidar2)
     tempRanges = ranges;
     for i = 1:length(ranges)
         if tempRanges(i) == 0
             tempRanges(i) = nan;
         end
     end
-    set(h(1),'ydata', tempRanges);
     
     if isLidar2
         t = 0;
@@ -190,7 +243,6 @@ function [t, cartesianCentres, rangeToCentres, angleToCentres, alreadyFound] = p
     end
     
     fov = [-75:0.5:75]';
-    set(h(2), 'xdata', fov(intensity_idx), 'ydata', ranges(intensity_idx));
     
     tic();
     cartesianCentres = {};
@@ -254,7 +306,6 @@ function [t, cartesianCentres, rangeToCentres, angleToCentres, alreadyFound] = p
         end
     end
     t = toc()*1000;
-    plotOOI(h, polarCentres);
 end
 
 function d = distanceBetween(a, b, ranges)
@@ -397,117 +448,41 @@ function [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, la
     end
 end
 
-function [estX, estY, estHeading, lastLidarPose] = estimatePose(h, pairs, data, rangeToPairs, angleToPairs, lastLidarPose)
-    estX = nan; estY = nan; estHeading = nan;
-    if size(pairs, 2) < 2
-        set(h, 'xdata', nan,'ydata', nan);
-        return
-    end
-    T2x = data.LidarsCfg.Lidar1.Ly;
-    T2y = data.LidarsCfg.Lidar1.Lx;
-
-    localCentres = zeros(2, size(pairs, 2));
-    globalCentres = zeros(2, size(pairs, 2));
-    for i = 1:size(pairs, 2)
-        pair = pairs{i};
-        localCentres(:, i) = pair{3};
-        globalCentres(:, i) = pair{1};
-    end
-        
-    estimates = zeros(3, nchoosek(size(localCentres, 2), 2));
-    idx = 1;
-    for i = 1:size(localCentres, 2)
-        l1 = localCentres(:, i);
-        g1 = globalCentres(:, i);
-        x1 = g1(1);
-        y1 = g1(2);
-        r1 = rangeToPairs(i);
-        for j = 1:size(localCentres, 2)
-            if i == j
-                continue
-            end
-            g2 = globalCentres(:, j);
-            r2 = rangeToPairs(j);
-            x2 = g2(1);
-            y2 = g2(2);
-           
-            K = (x2^2-x1^2+y2^2-y1^2+r1^2-r2^2)/2;
-            a = 1 + (x2-x1)^2/((y2-y1)^2);
-            b = -2*x1-2*K*(x2-x1)/((y2-y1)^2)+2*y1*(x2-x1)/(y2-y1);
-            c = x1^2+K^2/((y2-y1)^2)+y1^2-2*K*y1/(y2-y1)-r1^2;
-            xa = (-b-sqrt(b^2-4*a*c))/(2*a);
-            xb = (-b+sqrt(b^2-4*a*c))/(2*a);
-            ya = K/(y2-y1)-(x2-x1)/(y2-y1)*xa;
-            yb = K/(y2-y1)-(x2-x1)/(y2-y1)*xb;
-            
-            dista = distanceBetweenCartesian(lastLidarPose, [xa ya]);
-            distb = distanceBetweenCartesian(lastLidarPose, [xb yb]);
-
-            if dista < distb
-                x = xa;
-                y = ya;
-            else
-                x = xb;
-                y = yb;
-            end
-
-            heading = atan2(y1-y,x1-x) - angleToPairs(i)*pi/180;
-            pp = [1 0; 0 1] * l1 + [T2x; T2y];
-            T1 = g1 - [cos(heading-pi/2) -sin(heading-pi/2); sin(heading-pi/2) cos(heading-pi/2)] * pp; 
-            estimates(:, idx) = [T1(1), T1(2), heading];            
-            idx = idx + 1;
-        end
-    end
-    estX = sum(estimates(1, :)) / size(estimates, 2);
-    estY = sum(estimates(2, :)) / size(estimates, 2);
-    estHeading = sum(estimates(3, :)) / size(estimates, 2);
-    
-    lastLidarPose = [estX; estY];
-
-    set(h, 'xdata', estX,'ydata', estY);
-end
-
 % -------------------------------------------------------------------------
 % -------------------------------------------------------------------------
 % -------------------------------------------------------------------------
 
-function plotRef = plotEstimatedX(X)
-    figure(11)
-    hold on;
-    legend('AutoUpdate','off')
-    plotRef = plot(X(1), X(2), 'b.');
-end
-
-function plotDifferences(data, X_buf, subsample_index, estX_buf)
+function plotConsistency(data, X_buf, Px_buf, X50_buf, Px50_buf, X25_buf, Px25_buf, subsample_index)
     X_subsample = zeros(3, length(subsample_index), 'single');
     for i = 1:length(X_subsample)
         X_subsample(:,i) = X_buf(:, subsample_index(i));
     end
-    
-    estX_subsample = zeros(3, length(subsample_index), 'single');
-    for i = 1:length(estX_subsample)
-        estX_subsample(:,i) = estX_buf(:, subsample_index(i));
+
+    X50_subsample = zeros(3, length(subsample_index), 'single');
+    for i = 1:length(X50_subsample)
+        X50_subsample(:,i) = X50_buf(:, subsample_index(i));
+    end
+
+    X25_subsample = zeros(3, length(subsample_index), 'single');
+    for i = 1:length(X25_subsample)
+        X25_subsample(:,i) = X25_buf(:, subsample_index(i));
     end
 
     ground = data.verify.poseL;
     x_diff = abs(ground(1,:) - X_subsample(1,:));
     y_diff = abs(ground(2,:) - X_subsample(2,:));
+    x50_diff = abs(ground(1,:) - X50_subsample(1,:));
+    y50_diff = abs(ground(2,:) - X50_subsample(2,:));
+    x25_diff = abs(ground(1,:) - X25_subsample(1,:));
+    y25_diff = abs(ground(2,:) - X25_subsample(2,:));
 
-    estX_diff = abs(ground(1,:) - estX_subsample(1,:));
-    estY_diff = abs(ground(2,:) - estX_subsample(2,:));
-    
-    groundPose = sqrt(ground(1,:).^2 + ground(2,:).^2);
-    pose = sqrt(X_subsample(1,:).^2 + X_subsample(2,:).^2);
-    pose_diff = abs(groundPose - pose);
-
-    estPose = sqrt(estX_subsample(1,:).^2 + estX_subsample(2,:).^2);
-    estPoseDiff = abs(groundPose - estPose);
-
-    for i = 1:length(estX_diff)
-        if isnan(estX_subsample(1))
-            estPoseDiff(i) = 0;
-        end
-    end
+    %groundPose = sqrt(ground(1,:).^2 + ground(2,:).^2);
+    %pose = sqrt(X_subsample(1,:).^2 + X_subsample(2,:).^2);
+    %pose_diff = abs(groundPose - pose);
+    %pose50 = sqrt(X50_subsample(1,:).^2 + X50_subsample(2,:).^2);
+    %pose_diff50 = abs(groundPose - pose50);
+   % pose25 = sqrt(X25_subsample(1,:).^2 + X25_subsample(2,:).^2);
+   % pose_diff25 = abs(groundPose - pose25);
 
     heading_diff = (X_subsample(3,:) - ground(3,:))*180/pi;
     for i = 1:length(heading_diff)
@@ -521,120 +496,140 @@ function plotDifferences(data, X_buf, subsample_index, estX_buf)
         end
     end
 
-    estHeading_diff = (estX_subsample(3,:) - ground(3,:))*180/pi;
-    for i = 1:length(estHeading_diff)
-        if abs(estHeading_diff(i)) > 180
-            if ground(3,i) > estX_subsample(3,i)
-                estHeading_diff(i) = (2*pi - ground(3,i)) + estX_subsample(3,i);
+    heading_diff50 = (X50_subsample(3,:) - ground(3,:))*180/pi;
+    for i = 1:length(heading_diff50)
+        if abs(heading_diff50(i)) > 180
+            if ground(3,i) > X50_subsample(3,i)
+                heading_diff50(i) = (2*pi - ground(3,i)) + X50_subsample(3,i);
             else
-                estHeading_diff(i) = ((2*pi - estX_subsample(3,i) + ground(3,i))) * -1 ;
+                heading_diff50(i) = ((2*pi - X50_subsample(3,i) + ground(3,i))) * -1 ;
             end
-            estHeading_diff(i) = estHeading_diff(i)*180/pi;
+            heading_diff50(i) = heading_diff50(i)*180/pi;
         end
     end
 
-    for i = 1:length(estHeading_diff)
-        if isnan(estX_subsample(1))
-            estHeading_diff(i) = 0;
+    heading_diff25 = (X25_subsample(3,:) - ground(3,:))*180/pi;
+    for i = 1:length(heading_diff25)
+        if abs(heading_diff25(i)) > 180
+            if ground(3,i) > X25_subsample(3,i)
+                heading_diff25(i) = (2*pi - ground(3,i)) + X25_subsample(3,i);
+            else
+                heading_diff25(i) = ((2*pi - X25_subsample(3,i) + ground(3,i))) * -1 ;
+            end
+            heading_diff25(i) = heading_diff25(i)*180/pi;
         end
     end
 
     t = 1 : length(subsample_index);
+    
+    margin = zeros(3, length(subsample_index));
+    for i = 1:length(margin)
+        Px = Px_buf{i};
+        margin(1, i) = 2*sqrt(Px(1,1));
+        margin(2, i) = 2*sqrt(Px(2,2));
+        margin(3, i) = 2*sqrt(Px(3,3));
+    end
 
-    figure(12)
-    subplot(211)
-    plot(t, pose_diff * 100);
-    title("Pose Difference");
+    margin50 = zeros(3, length(subsample_index));
+    for i = 1:length(margin50)
+        Px50 = Px50_buf{i};
+        margin50(1, i) = 2*sqrt(Px50(1,1));
+        margin50(2, i) = 2*sqrt(Px50(2,2));
+        margin50(3, i) = 2*sqrt(Px50(3,3));
+    end
+
+    margin25 = zeros(3, length(subsample_index));
+    for i = 1:length(margin25)
+        Px25 = Px25_buf{i};
+        margin25(1, i) = 2*sqrt(Px25(1,1));
+        margin25(2, i) = 2*sqrt(Px25(2,2));
+        margin25(3, i) = 2*sqrt(Px25(3,3));
+    end
+
+    figure(500); clf();
+    subplot(3,1,1); hold on;
+    plot(t, x_diff * 100);
+    plot(t, margin(1,:) * 100);
+    plot(t, -margin(1,:) * 100);
+    title("X Difference (100% Density)");
     xlabel('LiDAR event');
     ylabel('difference (cm)');
+    hold off;
 
-    subplot(212)
+    subplot(3,1,2); hold on;
+    plot(t, y_diff * 100);
+    plot(t, margin(2,:) * 100);
+    plot(t, -margin(2,:) * 100);
+    title("Y Difference (100% Density)");
+    xlabel('LiDAR event');
+    ylabel('difference (cm)');
+    hold off;
+
+    subplot(3,1,3); hold on;
     plot(t, heading_diff);
-    title("Heading Difference");
+    plot(t, margin(3,:)*180/pi);
+    plot(t, -margin(3,:)*180/pi);
+    title("Heading Difference (100% Density)");
     xlabel('LiDAR event');
     ylabel('difference (deg)');
+    hold off;
 
-    figure(15)
-    subplot(211)
-    plot(t, estPoseDiff * 100);
-    title("Estimated Pose Difference");
+    figure(501); clf();
+    subplot(3,1,1); hold on;
+    plot(t, x50_diff * 100);
+    plot(t, margin50(1,:) * 100);
+    plot(t, -margin50(1,:) * 100);
+    title("X Difference (50% Density)");
     xlabel('LiDAR event');
     ylabel('difference (cm)');
+    hold off;
 
-    subplot(212)
-    plot(t, estHeading_diff);
-    title("Estimated Heading Difference");
+    subplot(3,1,2); hold on;
+    plot(t, y50_diff * 100);
+    plot(t, margin50(2,:) * 100);
+    plot(t, -margin50(2,:) * 100);
+    title("Y Difference (50% Density)");
+    xlabel('LiDAR event');
+    ylabel('difference (cm)');
+    hold off;
+
+    subplot(3,1,3); hold on;
+    plot(t, heading_diff50);
+    plot(t, margin50(3,:)*180/pi);
+    plot(t, -margin50(3,:)*180/pi);
+    title("Heading Difference (50% Density)");
     xlabel('LiDAR event');
     ylabel('difference (deg)');
+    hold off;
+
+    figure(502); clf();
+    subplot(3,1,1); hold on;
+    plot(t, x25_diff * 100);
+    plot(t, margin25(1,:) * 100);
+    plot(t, -margin25(1,:) * 100);
+    title("X Difference (25% Density)");
+    xlabel('LiDAR event');
+    ylabel('difference (cm)');
+    hold off;
+
+    subplot(3,1,2); hold on;
+    plot(t, y_diff * 100);
+    plot(t, margin25(2,:) * 100);
+    plot(t, -margin25(2,:) * 100);
+    title("Y Difference (25% Density)");
+    xlabel('LiDAR event');
+    ylabel('difference (cm)');
+    hold off;
+
+    subplot(3,1,3); hold on;
+    plot(t, heading_diff25);
+    plot(t, margin25(3,:)*180/pi);
+    plot(t, -margin25(3,:)*180/pi);
+    title("Heading Difference (25% Density)");
+    xlabel('LiDAR event');
+    ylabel('difference (deg)');
+    hold off;
     
-    maxPoseDiff = max(pose_diff) * 100;
-    fprintf("Maximum pose difference: %.2f m\n", maxPoseDiff);
-
-    maxHeadingDiff1 = max(heading_diff);
-    maxHeadingDiff2 = abs(min(heading_diff));
-    if maxHeadingDiff1 > maxHeadingDiff2
-        maxHeadingDiff = maxHeadingDiff1;
-        direction = "CCW";
-    else 
-        maxHeadingDiff = maxHeadingDiff2;
-        direction = "CW";
-    end
-
-    fprintf("Max heading difference: %.2f deg ", maxHeadingDiff);
-    fprintf(direction);
-    fprintf("\n");
-
-    avgEstPose = 0;
-    count = 0;
-    for i = 1:length(estPoseDiff)
-        if ~isnan(estPoseDiff(i))
-            avgEstPose = avgEstPose + estPoseDiff(i);
-            count = count + 1;
-        end
-    end
-    avgEstPose = avgEstPose/count;
-    
-    avgEstHeading = 0;
-    count = 0;
-    for i = 1:length(estHeading_diff)
-        if ~isnan(estHeading_diff(i))
-            avgEstHeading = avgEstHeading + estHeading_diff(i);
-            count = count + 1;
-        end
-    end
-    avgEstHeading = avgEstHeading/count;
-
-    fprintf("Average estimated pose difference: %.2f m\n", avgEstPose);
-    fprintf("Average estimated heading difference: %.2f deg\n", avgEstHeading);
-end
-
-function plotLidarTimes(times1, nLidarEvents)
-    figure(13); clf;
-    t = 1 : nLidarEvents;
-    %subplot(211)
-    plot(t, times1);
-    title("LiDAR#1 processing time")
-    xlabel('LiDAR#1 event')
-    ylabel('time (ms)')
-    avg1 = sum(times1) / length(times1);
-    hold on;
-    yline(avg1, '--', 'color', 'r');
-    legend({'processing time', 'average time'})
-
-    avg1 = sum(times1) / length(times1);
-
-    fprintf("Average processing time LiDAR#1: %.2f ms\n", avg1);
-end
-
-function plotOOI(h, polarCentres)
-    ranges = [];
-    angleIndex = [];
-    for i = 1:length(polarCentres)
-        idx = polarCentres{i};
-        ranges(end+1) = idx(1);
-        angleIndex(end+1) = indexToAngle(idx(2));
-    end
-    set(h(3), 'xdata', angleIndex, 'ydata', ranges);
 end
 
 function prev = plotData(prev, h, X, centresGlobal, scan1Global, scan2Global, pairs, alreadyFoundGlobal)
@@ -666,32 +661,11 @@ function prev = plotData(prev, h, X, centresGlobal, scan1Global, scan2Global, pa
     set(h(6), 'xdata', alreadyFoundGlobal(1,:), 'ydata', alreadyFoundGlobal(2,:));
 end
 
-function plotOOILocal(h, ranges, localCentres, intensity_idx)
-    cartesian = zeros(2, length(ranges));
-    for i = 1:length(ranges)
-        [x, y] = indexRangeToCartesian(i, ranges);
-        cartesian(:, i) = [x; y];
-    end
-    set(h(2), 'xdata', cartesian(1,:), 'ydata', cartesian(2,:));
-    intensityCartesian = zeros(2, length(intensity_idx));
-    for i = 1:length(intensity_idx)
-        intensityCartesian(:, i) = cartesian(:, intensity_idx(i));
-    end
-    set(h(3), 'xdata', intensityCartesian(1,:), 'ydata', intensityCartesian(2,:));
-    
-    centres = zeros(2, length(localCentres));
-    for i = 1:length(localCentres)
-        centres(:,i) = localCentres{i};
-    end
-    set(h(4), 'xdata', centres(1,:), 'ydata', centres(2,:));
-end
-
-function [h, hh] = initPlots(data)
+function [h] = initPlots(data)
     figure(11); clf();
-    
     landmarks = data.Context.Landmarks;
     plot(landmarks(1,:), landmarks(2,:), 'ko');
-    title('Global CF (Displaying Data)');
+    title('Global CF (100% Density)');
     xlabel('x (m)'); 
     ylabel('y (m)');
 
@@ -712,66 +686,53 @@ function [h, hh] = initPlots(data)
     legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'LiDAR#1 scan', 'LiDAR#2 scan', 'DA links', 'OOI part', 'OOI centre estimate'});
     hold off;
 
-    figure(32); clf();
-    hold on;
-    landmarks = data.Context.Landmarks;
-    plot(landmarks(1,:), landmarks(2,:), 'ko')
-    walls = data.Context.Walls;
-    plot(walls(1,:), walls(2,:), 'color', [0,1,0]*0.7, 'linewidth', 3);
-    p0=data.pose0;
-    plot(p0(1),p0(2),'r*','markersize',10);
-    plotRef = plot(p0(1),p0(2),'b.');
-    title('Global CF (Estimated Pose)');
+    figure(101); clf();
+    landmarks = data.Context.Landmarks2;
+    plot(landmarks(1,:), landmarks(2,:), 'ko');
+    title('Global CF (50% Density)');
     xlabel('x (m)'); 
     ylabel('y (m)');
-    legend({'landmarks','walls (middle planes)','initial position','estimated position'});
 
-    hh = initPolarPlots();
-    hh(end+1) = plotRef;
-    h = [h1a, h1b, h1c, h1d, h1e, h1f];
-end
-
-function hh = initPolarPlots()
-    figure(10); clf();
-    fov = [-75:0.5:75];
-    r=fov*0;
-    
-    subplot(211);  
-    h1 = plot(fov, r, '.b');
-    title('LiDAR1 Polar Scan');  
-    xlabel('angle (deg)');  
-    ylabel('range (m)'); 
-    axis([-75, 75, 0, 20]); 
-    grid on;
-    hold on;  
-    h1b = plot(nan, nan, 'g*');
     hold on;
-    h1c = plot(nan, nan, 'r+');
-    legend({'opaque pixels','intensity pixels', 'OOI centers'});
-        
+    walls = data.Context.Walls;
+    plot(walls(1,:), walls(2,:), 'color', [0,1,0]*0.7, 'linewidth', 3);    
     
-    subplot(212);  
-    h2 = plot(fov, r, '.b'); 
-    title('LiDAR2 Polar Scan');  
-    xlabel('angle (deg)');  
-    ylabel('range (m)'); 
-    axis([-75, 75, 0, 20]); 
-    grid on;
-    hold on;  
-    h2b = plot(nan, nan, 'g*');
-    h2c = plot(nan, nan, 'r+');
+    p0=data.pose0;
+    plot(p0(1),p0(2),'r*','markersize',10);
 
-    figure(31); clf();
-    hold on;
-    h3 = plot(0, 0, 'c-s');
-    h3b = plot(nan, nan, 'b.');
-    h3c = plot(nan, nan, 'g*');
-    h3d = plot(nan, nan, 'r+');
-    title('LiDAR1 Local CF');
-    xlabel('x (m)');
+    h2a = plot(nan, nan,'b.');
+    h2c = plot(nan, nan, 'c.');
+    h2d = plot(nan, nan, 'y.');
+    h2e = plot(nan, nan, 'm');
+    h2f = plot(nan, nan, 'k.');
+    h2b = plot(nan, nan,'r+');
+
+    legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'LiDAR#1 scan', 'LiDAR#2 scan', 'DA links', 'OOI part', 'OOI centre estimate'});
+    hold off;
+
+    figure(102); clf();
+    landmarks = data.Context.Landmarks4;
+    plot(landmarks(1,:), landmarks(2,:), 'ko');
+    title('Global CF (25% Density)');
+    xlabel('x (m)'); 
     ylabel('y (m)');
-    legend({'LiDAR scanner', 'opaque pixels', 'intensity pixels', 'OOI centres'});
-    xlim([-10 10]);
-    ylim([0 20]);
-    hh = [h1, h1b, h1c, h2, h2b, h2c, h3, h3b, h3c, h3d];
+
+    hold on;
+    walls = data.Context.Walls;
+    plot(walls(1,:), walls(2,:), 'color', [0,1,0]*0.7, 'linewidth', 3);    
+    
+    p0=data.pose0;
+    plot(p0(1),p0(2),'r*','markersize',10);
+
+    h3a = plot(nan, nan,'b.');
+    h3c = plot(nan, nan, 'c.');
+    h3d = plot(nan, nan, 'y.');
+    h3e = plot(nan, nan, 'm');
+    h3f = plot(nan, nan, 'k.');
+    h3b = plot(nan, nan,'r+');
+
+    legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'LiDAR#1 scan', 'LiDAR#2 scan', 'DA links', 'OOI part', 'OOI centre estimate'});
+    hold off;
+
+    h = [h1a, h1b, h1c, h1d, h1e, h1f, h2a, h2b, h2c, h2d, h2e, h2f, h3a, h3b, h3c, h3d, h3e, h3f];
 end
