@@ -96,6 +96,14 @@ function extract(data, file)
                 
                 [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres);
 
+                ranges = zeros(1, length(pairs));
+                Xs = rotation(X(3))*[L1x; L1y]+X(1:2);
+                for j = 1:length(pairs)
+                    pair = pairs{j};
+                    pairX = pair{1};
+                    ranges(j) = sqrt((pairX(1)-Xs(1))^2+(pairX(2)-Xs(2))^2);
+                end
+
                 %%% update step
                 tempX = X;
                 for j = 1:length(pairs)
@@ -104,15 +112,17 @@ function extract(data, file)
 
                     X1 = pair{2};
                     xk = X1(1); yk = X1(2);
-                    Xs = rotation(tempX(3))*[L1x; L1y]+tempX(1:2);
+                    Xs = rotation(X(3))*[L1x; L1y]+X(1:2);
                     xs = Xs(1); ys = Xs(2);
                     %disp('');
                     %disp(rangeToPairs(j))
                     %disp(sqrt((xk-xs)^2+(yk-ys)^2))
                     %z = rangeToPairs(j) - sqrt((xk-xs)^2+(yk-ys)^2);
-                    z = sqrt((X2(1)-xs)^2+(X2(2)-ys)^2) - sqrt((xk-xs)^2+(yk-ys)^2);
+                    %z = sqrt((X2(1)-xs)^2+(X2(2)-ys)^2) - sqrt((xk-xs)^2+(yk-ys)^2);
+                    z = ranges(j) - sqrt((xk-xs)^2+(yk-ys)^2);
                     H = [-(xk-xs)/sqrt((xk-xs)^2+(yk-ys)^2) -(yk-ys)/sqrt((xk-xs)^2+(yk-ys)^2) 0]*[1 0 -L1x*sin(X(3))-L1y*cos(X(3)); 0 1 L1x*cos(X(3))-L1y*sin(X(3)); 0 0 1];
                     [X, Px] = updateKinematic(X, Px, 0.25^2, H, z);
+                    disp(X1);
                     disp(z);
                 end
 
@@ -122,7 +132,7 @@ function extract(data, file)
 
                 prevPlotRefs = plotData(prevPlotRefs, h, X, centresGlobal, scan1Global, scan2Global, pairs, alreadyFoundGlobal);
                 plotOOILocal(hh(7:10), ranges1, localCentres, intensity_idx1);
-                pause(0.05);
+                %pause(0.05);
                 continue;            
             case 2 % speed and gyros
                 fprintf('DR: dt=%.1f ms, v=%.2f m/s, w=%.2f deg/sec\n', dt*1000, vw.*[1;180/pi]);
@@ -361,7 +371,7 @@ function [pairs, rangeToPairs, angleToPairs] = dataAssociation(centresGlobal, la
     pairs = {};
     rangeToPairs = [];
     angleToPairs = [];
-    thresh = 0.3; % in m
+    thresh = 1; % in m
     centres = zeros(2, size(centresGlobal, 2));
     for i = 1:size(centres, 2)
         centres(:, i) = centresGlobal{i};
