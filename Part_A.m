@@ -98,24 +98,9 @@ function extract(data, file)
                 globalCentres2 = zeros(2, size(localCentres2, 2));
                 for q = 1:size(globalCentres2, 2)
                     localPoint = localCentres2{q};
-                    %disp(localPoint');
-                    %carcf = rotation(pi)*localPoint'+[L2y;L2x];
-                    %disp(carcf);
-                    %centreGCF = rotation(X(3)-pi/2)*carcf+X(1:2);
-                    %disp(X);
-                    %disp(centreGCF);
                     centreGCF = lidarToGlobal(localPoint', (X(3)-pi/2), pi, X(1:2), [L2x; L2y]);
                     globalCentres2(:, q) = [centreGCF(1); centreGCF(2)];                    
                 end
-                %tempGlobalCentres2 = globalCentres2;
-                %globalCentres2 = zeros(2, size(localCentres2, 2));
-                %for q = 1:size(tempGlobalCentres2, 2)
-                    %globalCentre = tempGlobalCentres2(:,q);
-                    %pointCCF = inv(rotation(X(3)))*(globalCentre - X(1:2));
-                    %pointCCF = [-pointCCF(1); pointCCF(2)];
-                    %pointGCF = rotation(X(3))*pointCCF+X(1:2);
-                    %globalCentres2(:,q) = [pointGCF(1); -pointGCF(2)];
-               % end
 
                 for q = 1:size(globalCentres2, 2)
                     centresGlobal{end+1} = globalCentres2(:, q);
