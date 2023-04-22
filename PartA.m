@@ -111,7 +111,6 @@ function extract(data, landmarkNum)
                     pair = pairs{j};
                     pairX = pair{2};
                     ranges(j) = sqrt((pairX(1)-Xs(1))^2+(pairX(2)-Xs(2))^2);
-                    %ranges(j) = sqrt((pairX(1)-)^2+(pairX(2)-ground(2,length(subsample_index)))^2);
                 end
 
                 for j = 1:length(pairs)

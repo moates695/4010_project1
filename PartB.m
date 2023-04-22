@@ -151,6 +151,7 @@ function bias = optimize(data)
                 case 2
                     vw = data.vw(:, index);
                     vw(2) = vw(2) + bias;
+
                 otherwise
                     continue
             end
