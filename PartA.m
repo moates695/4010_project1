@@ -19,7 +19,9 @@ function extract(data, landmarkNum)
     X_buf = zeros(3, data.n, 'single');
     Px_buf = {};
     Pu = [0.1^2 0; 0 (4*pi/180)^2];
-    R = [0.25^2 0; 0 (3*pi/180)^2];
+    R = [0.25^2];
+
+    ground = data.verify.poseL;
 
     L1x = data.LidarsCfg.Lidar1.Ly;
     L1y = data.LidarsCfg.Lidar1.Lx;
@@ -104,18 +106,19 @@ function extract(data, landmarkNum)
                 [pairs, ~, ~] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres);
 
                 ranges = zeros(1, length(pairs));
-                Xs = rotation(X(3))*[L1x; L1y]+X(1:2);
+                Xs = rotation(X(3)-pi/2)*[L1x; L1y]+ground(1:2,length(subsample_index));
                 for j = 1:length(pairs)
                     pair = pairs{j};
-                    pairX = pair{1};
+                    pairX = pair{2};
                     ranges(j) = sqrt((pairX(1)-Xs(1))^2+(pairX(2)-Xs(2))^2);
+                    %ranges(j) = sqrt((pairX(1)-)^2+(pairX(2)-ground(2,length(subsample_index)))^2);
                 end
 
                 for j = 1:length(pairs)
                     pair = pairs{j};
                     X1 = pair{2};
                     xk = X1(1); yk = X1(2);
-                    Xs = rotation(X(3))*[L1x; L1y]+X(1:2);
+                    Xs = rotation(X(3)-pi/2)*[L1x; L1y]+X(1:2);
                     xs = Xs(1); ys = Xs(2);
                     z = ranges(j) - sqrt((xk-xs)^2+(yk-ys)^2);
                     H = [-(xk-xs)/sqrt((xk-xs)^2+(yk-ys)^2) -(yk-ys)/sqrt((xk-xs)^2+(yk-ys)^2) 0]*[1 0 -L1x*sin(X(3))-L1y*cos(X(3)); 0 1 L1x*cos(X(3))-L1y*sin(X(3)); 0 0 1];
