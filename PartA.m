@@ -3,28 +3,20 @@
 % File contains the entirety of Project1 code (all parts ABCDEF)
 % usage >>Part_A('DataUsr_006b')
 
-function main(file)
+function main(file, landmarkNum)
     load(file); 
-    extract(data, file);
+    extract(data, landmarkNum);
 end
 
 % ----------------------------------------
 
-function extract(data, file)
+function extract(data, landmarkNum)
     [h] = initPlots(data);
     
     X = data.pose0; % [meters; meters; radians]
     Px = zeros(3, 3, 'single');
-    X50 = X;
-    Px50 = Px;
-    X25 = X;
-    Px25 = Px;
     X_buf = zeros(3, data.n, 'single');
     Px_buf = {};
-    X50_buf = zeros(3, data.n, 'single');
-    Px50_buf = {};
-    X25_buf = zeros(3, data.n, 'single');
-    Px25_buf = {};
     Pu = [0.1^2 0; 0 (4*pi/180)^2];
     R = [0.25^2 0; 0 (3*pi/180)^2];
 
@@ -44,8 +36,7 @@ function extract(data, file)
     Lidar2Cfg=data.LidarsCfg.Lidar2;
 
     prevPlotRefs = [];
-    prevPlotRefs50 = [];
-    prevPlotRefs25 = [];
+    if landmarkNum == 
     landmarks = data.Context.Landmarks;
     landmarks2 = data.Context.Landmarks2;
     landmarks4 = data.Context.Landmarks4;
