@@ -1,7 +1,8 @@
 % Marcus Oates 
 % z5257541
-% File contains the entirety of Project1 code (all parts ABCDEF)
-% usage >>Part_A('DataUsr_006b')
+% Date: 22/04/23
+% File contains Part A code
+% usage: >>Part_A('DataUsr_006k', 1)
 
 function main(file, landmarkNum)
     load(file); 
@@ -36,10 +37,16 @@ function extract(data, landmarkNum)
     Lidar2Cfg=data.LidarsCfg.Lidar2;
 
     prevPlotRefs = [];
-    if landmarkNum == 
-    landmarks = data.Context.Landmarks;
-    landmarks2 = data.Context.Landmarks2;
-    landmarks4 = data.Context.Landmarks4;
+    if landmarkNum == 1
+        landmarks = data.Context.Landmarks;
+    elseif landmarkNum == 2
+        landmarks = data.Context.Landmarks2;
+    elseif landmarkNum == 3
+        landmarks = data.Context.Landmarks4;
+    else
+        return
+    end
+    
     disp('Begin sampling events');
 
     gyroBias = 0;
@@ -48,10 +55,6 @@ function extract(data, landmarkNum)
     for i = 1:data.n
         X_buf(:,i) = X;  
         Px_buf{end+1} = Px;
-        X50_buf(:,i) = X50;  
-        Px50_buf{end+1} = Px50;
-        X25_buf(:,i) = X25;  
-        Px25_buf{end+1} = Px25;
         event = events(:,i);                          
 
         t_curr = 0.0001 * double(event(1));
@@ -59,8 +62,6 @@ function extract(data, landmarkNum)
         t_last = 0.0001 * double(event(1));
        
         [X, Px] = predictKinematic(X, Px, vw, dt, Pu);
-        [X50, Px50] = predictKinematic(X50, Px50, vw, dt, Pu);
-        [X25, Px25] = predictKinematic(X25, Px25, vw, dt, Pu);
 
         index = event(2);
         sensorID = event(3);
@@ -101,8 +102,6 @@ function extract(data, landmarkNum)
                 end
                 
                 [pairs, ~, ~] = dataAssociation(centresGlobal, landmarks, localCentres, rangeToCentres, angleToCentres);
-                [pairs50, ~, ~] = dataAssociation(centresGlobal, landmarks2, localCentres, rangeToCentres, angleToCentres);
-                [pairs25, ~, ~] = dataAssociation(centresGlobal, landmarks4, localCentres, rangeToCentres, angleToCentres);
 
                 ranges = zeros(1, length(pairs));
                 Xs = rotation(X(3))*[L1x; L1y]+X(1:2);
@@ -110,22 +109,6 @@ function extract(data, landmarkNum)
                     pair = pairs{j};
                     pairX = pair{1};
                     ranges(j) = sqrt((pairX(1)-Xs(1))^2+(pairX(2)-Xs(2))^2);
-                end
-
-                ranges50 = zeros(1, length(pairs50));
-                X50s = rotation(X50(3))*[L1x; L1y]+X50(1:2);
-                for j = 1:length(pairs50)
-                    pair = pairs50{j};
-                    pairX = pair{1};
-                    ranges50(j) = sqrt((pairX(1)-X50s(1))^2+(pairX(2)-X50s(2))^2);
-                end
-
-                ranges25 = zeros(1, length(pairs25));
-                X25s = rotation(X25(3))*[L1x; L1y]+X25(1:2);
-                for j = 1:length(pairs25)
-                    pair = pairs25{j};
-                    pairX = pair{1};
-                    ranges25(j) = sqrt((pairX(1)-X25s(1))^2+(pairX(2)-X25s(2))^2);
                 end
 
                 for j = 1:length(pairs)
@@ -139,31 +122,7 @@ function extract(data, landmarkNum)
                     [X, Px] = updateKinematic(X, Px, 0.25^2, H, z);
                 end
 
-                for j = 1:length(pairs50)
-                    pair = pairs50{j};
-                    X1 = pair{2};
-                    xk = X1(1); yk = X1(2);
-                    X50s = rotation(X50(3))*[L1x; L1y]+X50(1:2);
-                    xs = X50s(1); ys = X50s(2);
-                    z = ranges(j) - sqrt((xk-xs)^2+(yk-ys)^2);
-                    H = [-(xk-xs)/sqrt((xk-xs)^2+(yk-ys)^2) -(yk-ys)/sqrt((xk-xs)^2+(yk-ys)^2) 0]*[1 0 -L1x*sin(X(3))-L1y*cos(X(3)); 0 1 L1x*cos(X(3))-L1y*sin(X(3)); 0 0 1];
-                    [X50, Px50] = updateKinematic(X50, Px50, 0.25^2, H, z);
-                end
-
-                for j = 1:length(pairs25)
-                    pair = pairs25{j};
-                    X1 = pair{2};
-                    xk = X1(1); yk = X1(2);
-                    X25s = rotation(X25(3))*[L1x; L1y]+X25(1:2);
-                    xs = X25s(1); ys = X25s(2);
-                    z = ranges(j) - sqrt((xk-xs)^2+(yk-ys)^2);
-                    H = [-(xk-xs)/sqrt((xk-xs)^2+(yk-ys)^2) -(yk-ys)/sqrt((xk-xs)^2+(yk-ys)^2) 0]*[1 0 -L1x*sin(X(3))-L1y*cos(X(3)); 0 1 L1x*cos(X(3))-L1y*sin(X(3)); 0 0 1];
-                    [X25, Px25] = updateKinematic(X25, Px25, 0.25^2, H, z);
-                end
-
                 prevPlotRefs = plotData(prevPlotRefs, h, X, centresGlobal, scan1Global, scan2Global, pairs, alreadyFoundGlobal);
-                prevPlotRefs50 = plotData(prevPlotRefs50, h(7:12), X50, centresGlobal, scan1Global, scan2Global, pairs50, alreadyFoundGlobal);
-                prevPlotRefs25 = plotData(prevPlotRefs25, h(13:18), X25, centresGlobal, scan1Global, scan2Global, pairs25, alreadyFoundGlobal);
                 continue;            
             case 2 % speed and gyros
                 fprintf('DR: dt=%.1f ms, v=%.2f m/s, w=%.2f deg/sec\n', dt*1000, vw.*[1;180/pi]);
@@ -177,7 +136,7 @@ function extract(data, landmarkNum)
     end
 
     disp('End sampling events');
-    plotConsistency(data, X_buf, Px_buf, X50_buf, Px50_buf, X25_buf, Px25_buf, subsample_index);
+    plotConsistency(data, X_buf, Px_buf, subsample_index);
 end
 
 % --------------------------------------------------------------------------------
@@ -428,37 +387,15 @@ end
 % -------------------------------------------------------------------------
 % -------------------------------------------------------------------------
 
-function plotConsistency(data, X_buf, Px_buf, X50_buf, Px50_buf, X25_buf, Px25_buf, subsample_index)
+function plotConsistency(data, X_buf, Px_buf, subsample_index)
     X_subsample = zeros(3, length(subsample_index), 'single');
     for i = 1:length(X_subsample)
         X_subsample(:,i) = X_buf(:, subsample_index(i));
     end
 
-    X50_subsample = zeros(3, length(subsample_index), 'single');
-    for i = 1:length(X50_subsample)
-        X50_subsample(:,i) = X50_buf(:, subsample_index(i));
-    end
-
-    X25_subsample = zeros(3, length(subsample_index), 'single');
-    for i = 1:length(X25_subsample)
-        X25_subsample(:,i) = X25_buf(:, subsample_index(i));
-    end
-
     ground = data.verify.poseL;
     x_diff = abs(ground(1,:) - X_subsample(1,:));
     y_diff = abs(ground(2,:) - X_subsample(2,:));
-    x50_diff = abs(ground(1,:) - X50_subsample(1,:));
-    y50_diff = abs(ground(2,:) - X50_subsample(2,:));
-    x25_diff = abs(ground(1,:) - X25_subsample(1,:));
-    y25_diff = abs(ground(2,:) - X25_subsample(2,:));
-
-    %groundPose = sqrt(ground(1,:).^2 + ground(2,:).^2);
-    %pose = sqrt(X_subsample(1,:).^2 + X_subsample(2,:).^2);
-    %pose_diff = abs(groundPose - pose);
-    %pose50 = sqrt(X50_subsample(1,:).^2 + X50_subsample(2,:).^2);
-    %pose_diff50 = abs(groundPose - pose50);
-   % pose25 = sqrt(X25_subsample(1,:).^2 + X25_subsample(2,:).^2);
-   % pose_diff25 = abs(groundPose - pose25);
 
     heading_diff = (X_subsample(3,:) - ground(3,:))*180/pi;
     for i = 1:length(heading_diff)
@@ -472,30 +409,6 @@ function plotConsistency(data, X_buf, Px_buf, X50_buf, Px50_buf, X25_buf, Px25_b
         end
     end
 
-    heading_diff50 = (X50_subsample(3,:) - ground(3,:))*180/pi;
-    for i = 1:length(heading_diff50)
-        if abs(heading_diff50(i)) > 180
-            if ground(3,i) > X50_subsample(3,i)
-                heading_diff50(i) = (2*pi - ground(3,i)) + X50_subsample(3,i);
-            else
-                heading_diff50(i) = ((2*pi - X50_subsample(3,i) + ground(3,i))) * -1 ;
-            end
-            heading_diff50(i) = heading_diff50(i)*180/pi;
-        end
-    end
-
-    heading_diff25 = (X25_subsample(3,:) - ground(3,:))*180/pi;
-    for i = 1:length(heading_diff25)
-        if abs(heading_diff25(i)) > 180
-            if ground(3,i) > X25_subsample(3,i)
-                heading_diff25(i) = (2*pi - ground(3,i)) + X25_subsample(3,i);
-            else
-                heading_diff25(i) = ((2*pi - X25_subsample(3,i) + ground(3,i))) * -1 ;
-            end
-            heading_diff25(i) = heading_diff25(i)*180/pi;
-        end
-    end
-
     t = 1 : length(subsample_index);
     
     margin = zeros(3, length(subsample_index));
@@ -504,22 +417,6 @@ function plotConsistency(data, X_buf, Px_buf, X50_buf, Px50_buf, X25_buf, Px25_b
         margin(1, i) = 2*sqrt(Px(1,1));
         margin(2, i) = 2*sqrt(Px(2,2));
         margin(3, i) = 2*sqrt(Px(3,3));
-    end
-
-    margin50 = zeros(3, length(subsample_index));
-    for i = 1:length(margin50)
-        Px50 = Px50_buf{i};
-        margin50(1, i) = 2*sqrt(Px50(1,1));
-        margin50(2, i) = 2*sqrt(Px50(2,2));
-        margin50(3, i) = 2*sqrt(Px50(3,3));
-    end
-
-    margin25 = zeros(3, length(subsample_index));
-    for i = 1:length(margin25)
-        Px25 = Px25_buf{i};
-        margin25(1, i) = 2*sqrt(Px25(1,1));
-        margin25(2, i) = 2*sqrt(Px25(2,2));
-        margin25(3, i) = 2*sqrt(Px25(3,3));
     end
 
     figure(500); clf();
@@ -546,62 +443,6 @@ function plotConsistency(data, X_buf, Px_buf, X50_buf, Px50_buf, X25_buf, Px25_b
     plot(t, margin(3,:)*180/pi);
     plot(t, -margin(3,:)*180/pi);
     title("Heading Difference (100% Density)");
-    xlabel('LiDAR event');
-    ylabel('difference (deg)');
-    hold off;
-
-    figure(501); clf();
-    subplot(3,1,1); hold on;
-    plot(t, x50_diff * 100);
-    plot(t, margin50(1,:) * 100);
-    plot(t, -margin50(1,:) * 100);
-    title("X Difference (50% Density)");
-    xlabel('LiDAR event');
-    ylabel('difference (cm)');
-    hold off;
-
-    subplot(3,1,2); hold on;
-    plot(t, y50_diff * 100);
-    plot(t, margin50(2,:) * 100);
-    plot(t, -margin50(2,:) * 100);
-    title("Y Difference (50% Density)");
-    xlabel('LiDAR event');
-    ylabel('difference (cm)');
-    hold off;
-
-    subplot(3,1,3); hold on;
-    plot(t, heading_diff50);
-    plot(t, margin50(3,:)*180/pi);
-    plot(t, -margin50(3,:)*180/pi);
-    title("Heading Difference (50% Density)");
-    xlabel('LiDAR event');
-    ylabel('difference (deg)');
-    hold off;
-
-    figure(502); clf();
-    subplot(3,1,1); hold on;
-    plot(t, x25_diff * 100);
-    plot(t, margin25(1,:) * 100);
-    plot(t, -margin25(1,:) * 100);
-    title("X Difference (25% Density)");
-    xlabel('LiDAR event');
-    ylabel('difference (cm)');
-    hold off;
-
-    subplot(3,1,2); hold on;
-    plot(t, y_diff * 100);
-    plot(t, margin25(2,:) * 100);
-    plot(t, -margin25(2,:) * 100);
-    title("Y Difference (25% Density)");
-    xlabel('LiDAR event');
-    ylabel('difference (cm)');
-    hold off;
-
-    subplot(3,1,3); hold on;
-    plot(t, heading_diff25);
-    plot(t, margin25(3,:)*180/pi);
-    plot(t, -margin25(3,:)*180/pi);
-    title("Heading Difference (25% Density)");
     xlabel('LiDAR event');
     ylabel('difference (deg)');
     hold off;
@@ -641,7 +482,7 @@ function [h] = initPlots(data)
     figure(11); clf();
     landmarks = data.Context.Landmarks;
     plot(landmarks(1,:), landmarks(2,:), 'ko');
-    title('Global CF (100% Density)');
+    title('Global CF');
     xlabel('x (m)'); 
     ylabel('y (m)');
 
@@ -662,53 +503,5 @@ function [h] = initPlots(data)
     legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'LiDAR#1 scan', 'LiDAR#2 scan', 'DA links', 'OOI part', 'OOI centre estimate'});
     hold off;
 
-    figure(101); clf();
-    landmarks = data.Context.Landmarks2;
-    plot(landmarks(1,:), landmarks(2,:), 'ko');
-    title('Global CF (50% Density)');
-    xlabel('x (m)'); 
-    ylabel('y (m)');
-
-    hold on;
-    walls = data.Context.Walls;
-    plot(walls(1,:), walls(2,:), 'color', [0,1,0]*0.7, 'linewidth', 3);    
-    
-    p0=data.pose0;
-    plot(p0(1),p0(2),'r*','markersize',10);
-
-    h2a = plot(nan, nan,'b.');
-    h2c = plot(nan, nan, 'c.');
-    h2d = plot(nan, nan, 'y.');
-    h2e = plot(nan, nan, 'm');
-    h2f = plot(nan, nan, 'k.');
-    h2b = plot(nan, nan,'r+');
-
-    legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'LiDAR#1 scan', 'LiDAR#2 scan', 'DA links', 'OOI part', 'OOI centre estimate'});
-    hold off;
-
-    figure(102); clf();
-    landmarks = data.Context.Landmarks4;
-    plot(landmarks(1,:), landmarks(2,:), 'ko');
-    title('Global CF (25% Density)');
-    xlabel('x (m)'); 
-    ylabel('y (m)');
-
-    hold on;
-    walls = data.Context.Walls;
-    plot(walls(1,:), walls(2,:), 'color', [0,1,0]*0.7, 'linewidth', 3);    
-    
-    p0=data.pose0;
-    plot(p0(1),p0(2),'r*','markersize',10);
-
-    h3a = plot(nan, nan,'b.');
-    h3c = plot(nan, nan, 'c.');
-    h3d = plot(nan, nan, 'y.');
-    h3e = plot(nan, nan, 'm');
-    h3f = plot(nan, nan, 'k.');
-    h3b = plot(nan, nan,'r+');
-
-    legend({'landmarks','walls (middle planes)','initial position', 'estimated position', 'LiDAR#1 scan', 'LiDAR#2 scan', 'DA links', 'OOI part', 'OOI centre estimate'});
-    hold off;
-
-    h = [h1a, h1b, h1c, h1d, h1e, h1f, h2a, h2b, h2c, h2d, h2e, h2f, h3a, h3b, h3c, h3d, h3e, h3f];
+    h = [h1a, h1b, h1c, h1d, h1e, h1f];
 end

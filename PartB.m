@@ -1,7 +1,8 @@
 % Marcus Oates 
 % z5257541
-% File contains the entirety of Project1 code (all parts ABCDEF)
-% usage >>Part_B('DataUsr_006b')
+% Date: 22/04/23
+% File contains Part B code
+% usage: >>Part_B('DataUsr_p020')
 
 function main(file)
     load(file); 
